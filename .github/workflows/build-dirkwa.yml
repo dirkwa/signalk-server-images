@@ -1,0 +1,110 @@
+name: build-dirkwa
+
+on:
+  schedule:
+    - cron: "45 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: build-dirkwa
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/signalk-server
+  UPSTREAM: SignalK/signalk-server
+  PRS: "2628 2588 2694 2690"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve upstream master + PR SHAs
+        id: shas
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          MASTER_SHA=$(gh api repos/${{ env.UPSTREAM }}/commits/master --jq .sha)
+          echo "master_sha=$MASTER_SHA" >> "$GITHUB_OUTPUT"
+
+          composite="master:$MASTER_SHA"
+          for pr in ${{ env.PRS }}; do
+            pr_sha=$(gh api repos/${{ env.UPSTREAM }}/pulls/$pr --jq '.head.sha')
+            composite="$composite pr$pr:$pr_sha"
+          done
+          echo "composite=$composite" >> "$GITHUB_OUTPUT"
+          echo "Composite key: $composite"
+
+      - name: Compare to last-built state
+        id: gate
+        run: |
+          set -euo pipefail
+          LAST=$(cat state/last-dirkwa.txt 2>/dev/null || echo "")
+          NEW="${{ steps.shas.outputs.composite }}"
+          if [ "$LAST" = "$NEW" ]; then
+            echo "No change. Skipping build."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Stack changed."
+            echo "  was: $LAST"
+            echo "  new: $NEW"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Clone master + merge PR stack
+        if: steps.gate.outputs.changed == 'true'
+        id: stack
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf signalk-src
+          git clone https://github.com/${{ env.UPSTREAM }}.git signalk-src
+          cd signalk-src
+          git config user.email "build@dirkwa.local"
+          git config user.name  "dirkwa build"
+          git checkout master
+
+          for pr in ${{ env.PRS }}; do
+            echo "::group::Merging PR #$pr"
+            head_sha=$(gh api repos/${{ env.UPSTREAM }}/pulls/$pr --jq '.head.sha')
+            git fetch origin "pull/$pr/head:pr-$pr"
+            if ! git merge --no-ff --no-edit -m "Merge SignalK/signalk-server#$pr ($head_sha)" "pr-$pr"; then
+              echo "::error::PR #$pr conflicts with the current stack on master."
+              git merge --abort || true
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
+
+          combined_sha=$(git rev-parse HEAD)
+          echo "combined_sha=$combined_sha" >> "$GITHUB_OUTPUT"
+          echo "combined_short=${combined_sha:0:7}" >> "$GITHUB_OUTPUT"
+
+          # Remove .git so the build context stays small and BuildKit doesn't
+          # hash a giant pack file on every run.
+          rm -rf .git
+
+      - name: Build and push
+        if: steps.gate.outputs.changed == 'true'
+        uses: ./.github/actions/build-and-push
+        with:
+          source: local
+          upstream_sha: ${{ steps.stack.outputs.combined_sha }}
+          tags: |
+            ${{ env.IMAGE }}:dirkwa
+            ${{ env.IMAGE }}:dirkwa-${{ steps.stack.outputs.combined_short }}
+
+      - name: Update state file
+        if: steps.gate.outputs.changed == 'true'
+        run: |
+          ./scripts/commit-state.sh \
+            state/last-dirkwa.txt \
+            "${{ steps.shas.outputs.composite }}" \
+            "chore(state): dirkwa ${{ steps.stack.outputs.combined_short }} [skip ci]"

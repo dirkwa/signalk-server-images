@@ -80,15 +80,21 @@ WORKDIR /home/node/signalk
 
 RUN mkdir -p /home/node/.signalk
 
+# When SOURCE=local, the workflow places a pre-prepared signalk-server checkout
+# at ./signalk-src/ in the build context (e.g. master + a stack of merged PRs).
+# When SOURCE != local, the dir contains just a .keep placeholder which we
+# ignore. Either way the COPY succeeds.
+COPY --chown=node:node ./signalk-src/ /tmp/signalk-src/
+
 # npm path: install signalk-server@<version> from registry.
-# git path: clone, build:all, pack workspaces + root, install resulting tarballs.
+# git path: clone master/branch, build:all, pack workspaces + root.
+# local path: same as git but uses the pre-staged /tmp/signalk-src instead of
+#   cloning. Lets the workflow merge PR branches before building.
 # After install, relocate @signalk/* and @mxtommy/kip into the nested
 # node_modules/signalk-server/node_modules/ tree the admin UI expects.
 RUN set -eux; \
-  if [ "$SIGNALK_SOURCE" = "git" ]; then \
-    git clone --depth=1 --branch="$SIGNALK_GIT_REF" \
-      https://github.com/SignalK/signalk-server.git src; \
-    cd src; \
+  build_from_src() { \
+    cd "$1"; \
     npm install; \
     npm run build:all; \
     npm pack --workspaces; \
@@ -97,15 +103,33 @@ RUN set -eux; \
     mkdir -p /tmp/skpack; \
     mv ./*.tgz /tmp/skpack/; \
     cd /home/node/signalk; \
-    rm -rf src; \
+    rm -rf "$1"; \
     npm install /tmp/skpack/*.tgz; \
     rm -rf /tmp/skpack; \
-  else \
-    if [ -z "$SIGNALK_VERSION" ]; then \
-      echo "SIGNALK_VERSION is required when SIGNALK_SOURCE=npm" >&2; exit 1; \
-    fi; \
-    npm install "signalk-server@$SIGNALK_VERSION"; \
-  fi; \
+  }; \
+  case "$SIGNALK_SOURCE" in \
+    git) \
+      git clone --depth=1 --branch="$SIGNALK_GIT_REF" \
+        https://github.com/SignalK/signalk-server.git src; \
+      build_from_src "$PWD/src"; \
+      ;; \
+    local) \
+      if [ ! -f /tmp/signalk-src/package.json ]; then \
+        echo "SIGNALK_SOURCE=local but ./signalk-src/ does not contain a signalk-server checkout" >&2; \
+        exit 1; \
+      fi; \
+      build_from_src /tmp/signalk-src; \
+      ;; \
+    npm) \
+      if [ -z "$SIGNALK_VERSION" ]; then \
+        echo "SIGNALK_VERSION is required when SIGNALK_SOURCE=npm" >&2; exit 1; \
+      fi; \
+      npm install "signalk-server@$SIGNALK_VERSION"; \
+      ;; \
+    *) \
+      echo "Unknown SIGNALK_SOURCE: $SIGNALK_SOURCE" >&2; exit 1; \
+      ;; \
+  esac; \
   mkdir -p node_modules/signalk-server/node_modules/@signalk/; \
   if [ -d node_modules/@signalk ]; then \
     cp -rf node_modules/@signalk/* node_modules/signalk-server/node_modules/@signalk/; \

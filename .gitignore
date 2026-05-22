@@ -1,3 +1,6 @@
 signalk-data/
 .DS_Store
 *.log
+# Local builds populate signalk-src/ but only .keep should be tracked.
+signalk-src/*
+!signalk-src/.keep

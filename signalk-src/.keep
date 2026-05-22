@@ -1,0 +1,3 @@
+# Placeholder so the Dockerfile's `COPY ./signalk-src/` succeeds even when
+# SIGNALK_SOURCE is not "local". For SOURCE=local, the workflow replaces
+# this directory with a full signalk-server checkout (master + stacked PRs).
