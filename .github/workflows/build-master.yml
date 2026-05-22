@@ -18,8 +18,12 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  build:
+  prepare:
     runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.sha.outputs.sha }}
+      short: ${{ steps.sha.outputs.short }}
+      changed: ${{ steps.gate.outputs.changed }}
     steps:
       - uses: actions/checkout@v6
 
@@ -50,21 +54,88 @@ jobs:
             echo "changed=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Build and push
-        if: steps.gate.outputs.changed == 'true'
-        uses: ./.github/actions/build-and-push
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            arch_label: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch_label: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Build single-arch image
+        id: build
+        uses: ./.github/actions/build-and-push-arch
         with:
+          platform: ${{ matrix.platform }}
           source: git
           git_ref: master
-          upstream_sha: ${{ steps.sha.outputs.sha }}
-          tags: |
-            ${{ env.IMAGE }}:master
-            ${{ env.IMAGE }}:master-${{ steps.sha.outputs.short }}
+          image: ${{ env.IMAGE }}
+          upstream_sha: ${{ needs.prepare.outputs.sha }}
+
+      - name: Stash digest for the merge job
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          echo "${{ steps.build.outputs.digest }}" > /tmp/digests/${{ matrix.arch_label }}
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.arch_label }}
+          path: /tmp/digests/${{ matrix.arch_label }}
+          retention-days: 1
+
+  merge:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Download digest artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: false
+
+      - name: Create multi-arch manifest
+        run: |
+          set -euo pipefail
+          AMD_DIGEST=$(cat /tmp/digests/digest-amd64/amd64)
+          ARM_DIGEST=$(cat /tmp/digests/digest-arm64/arm64)
+          if [ -z "$AMD_DIGEST" ] || [ -z "$ARM_DIGEST" ]; then
+            echo "Missing digests: amd64=$AMD_DIGEST arm64=$ARM_DIGEST" >&2
+            exit 1
+          fi
+          docker buildx imagetools create \
+            -t ${{ env.IMAGE }}:master \
+            -t ${{ env.IMAGE }}:master-${{ needs.prepare.outputs.short }} \
+            ${{ env.IMAGE }}@${AMD_DIGEST} \
+            ${{ env.IMAGE }}@${ARM_DIGEST}
 
       - name: Update state file
-        if: steps.gate.outputs.changed == 'true'
         run: |
           ./scripts/commit-state.sh \
             state/last-master-sha.txt \
-            "${{ steps.sha.outputs.sha }}" \
-            "chore(state): master ${{ steps.sha.outputs.short }} [skip ci]"
+            "${{ needs.prepare.outputs.sha }}" \
+            "chore(state): master ${{ needs.prepare.outputs.short }} [skip ci]"

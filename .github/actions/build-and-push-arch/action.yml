@@ -1,0 +1,71 @@
+name: Build and push (single architecture, digest-only)
+description: >
+  Build the signalk-server image for a single platform on a native runner
+  and push by digest only (no tag). The caller is expected to assemble a
+  manifest list across architectures in a follow-up job.
+
+inputs:
+  platform:
+    description: "Target buildx platform, e.g. linux/amd64 or linux/arm64."
+    required: true
+  source:
+    description: "SIGNALK_SOURCE build arg: npm | git | local."
+    required: true
+  version:
+    description: "npm version string (when source=npm)."
+    required: false
+    default: ""
+  git_ref:
+    description: "Git ref (when source=git)."
+    required: false
+    default: ""
+  image:
+    description: "Image repository (no tag), e.g. ghcr.io/owner/signalk-server."
+    required: true
+  upstream_sha:
+    description: "Upstream signalk-server commit SHA for image label."
+    required: false
+    default: ""
+
+outputs:
+  digest:
+    description: "The single-arch manifest digest just pushed to GHCR."
+    value: ${{ steps.build.outputs.digest }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Build and push by digest
+      id: build
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: ./Dockerfile
+        platforms: ${{ inputs.platform }}
+        push: true
+        provenance: true
+        sbom: true
+        cache-from: type=gha,scope=${{ inputs.platform }}
+        cache-to: type=gha,mode=max,scope=${{ inputs.platform }}
+        build-args: |
+          SIGNALK_SOURCE=${{ inputs.source }}
+          SIGNALK_VERSION=${{ inputs.version }}
+          SIGNALK_GIT_REF=${{ inputs.git_ref }}
+        outputs: type=image,name=${{ inputs.image }},push-by-digest=true,name-canonical=true,push=true
+        labels: |
+          org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          org.opencontainers.image.version=${{ inputs.version }}
+          org.opencontainers.image.revision=${{ inputs.upstream_sha }}
+          org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+          org.opencontainers.image.title=signalk-server
+          org.opencontainers.image.description=Unofficial SignalK server Docker image (Ubuntu 26.04 + Node 24 + podman/docker-cli)

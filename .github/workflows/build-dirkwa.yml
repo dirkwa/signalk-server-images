@@ -20,8 +20,13 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
-  build:
+  prepare:
     runs-on: ubuntu-latest
+    outputs:
+      composite: ${{ steps.shas.outputs.composite }}
+      changed: ${{ steps.gate.outputs.changed }}
+      combined_sha: ${{ steps.stack.outputs.combined_sha }}
+      combined_short: ${{ steps.stack.outputs.combined_short }}
     steps:
       - uses: actions/checkout@v6
 
@@ -32,8 +37,6 @@ jobs:
         run: |
           set -euo pipefail
           MASTER_SHA=$(gh api repos/${{ env.UPSTREAM }}/commits/master --jq .sha)
-          echo "master_sha=$MASTER_SHA" >> "$GITHUB_OUTPUT"
-
           composite="master:$MASTER_SHA"
           for pr in ${{ env.PRS }}; do
             pr_sha=$(gh api repos/${{ env.UPSTREAM }}/pulls/$pr --jq '.head.sha')
@@ -88,24 +91,106 @@ jobs:
           echo "combined_sha=$combined_sha" >> "$GITHUB_OUTPUT"
           echo "combined_short=${combined_sha:0:7}" >> "$GITHUB_OUTPUT"
 
-          # Remove .git so the build context stays small and BuildKit doesn't
-          # hash a giant pack file on every run.
+          # Remove .git so the artifact stays small and the build context
+          # later doesn't hash a giant pack file.
           rm -rf .git
 
-      - name: Build and push
+      - name: Upload prepared source as artifact
         if: steps.gate.outputs.changed == 'true'
-        uses: ./.github/actions/build-and-push
+        uses: actions/upload-artifact@v4
         with:
+          name: signalk-src
+          path: signalk-src
+          include-hidden-files: true
+          retention-days: 1
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.changed == 'true'
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+            arch_label: amd64
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+            arch_label: arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Restore prepared source
+        uses: actions/download-artifact@v4
+        with:
+          name: signalk-src
+          path: signalk-src
+
+      - name: Build single-arch image
+        id: build
+        uses: ./.github/actions/build-and-push-arch
+        with:
+          platform: ${{ matrix.platform }}
           source: local
-          upstream_sha: ${{ steps.stack.outputs.combined_sha }}
-          tags: |
-            ${{ env.IMAGE }}:dirkwa
-            ${{ env.IMAGE }}:dirkwa-${{ steps.stack.outputs.combined_short }}
+          image: ${{ env.IMAGE }}
+          upstream_sha: ${{ needs.prepare.outputs.combined_sha }}
+
+      - name: Stash digest for the merge job
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/digests
+          echo "${{ steps.build.outputs.digest }}" > /tmp/digests/${{ matrix.arch_label }}
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: digest-${{ matrix.arch_label }}
+          path: /tmp/digests/${{ matrix.arch_label }}
+          retention-days: 1
+
+  merge:
+    needs: [prepare, build]
+    if: needs.prepare.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Download digest artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digest-*
+          merge-multiple: false
+
+      - name: Create multi-arch manifest
+        run: |
+          set -euo pipefail
+          AMD_DIGEST=$(cat /tmp/digests/digest-amd64/amd64)
+          ARM_DIGEST=$(cat /tmp/digests/digest-arm64/arm64)
+          if [ -z "$AMD_DIGEST" ] || [ -z "$ARM_DIGEST" ]; then
+            echo "Missing digests: amd64=$AMD_DIGEST arm64=$ARM_DIGEST" >&2
+            exit 1
+          fi
+          docker buildx imagetools create \
+            -t ${{ env.IMAGE }}:dirkwa \
+            -t ${{ env.IMAGE }}:dirkwa-${{ needs.prepare.outputs.combined_short }} \
+            ${{ env.IMAGE }}@${AMD_DIGEST} \
+            ${{ env.IMAGE }}@${ARM_DIGEST}
 
       - name: Update state file
-        if: steps.gate.outputs.changed == 'true'
         run: |
           ./scripts/commit-state.sh \
             state/last-dirkwa.txt \
-            "${{ steps.shas.outputs.composite }}" \
-            "chore(state): dirkwa ${{ steps.stack.outputs.combined_short }} [skip ci]"
+            "${{ needs.prepare.outputs.composite }}" \
+            "chore(state): dirkwa ${{ needs.prepare.outputs.combined_short }} [skip ci]"

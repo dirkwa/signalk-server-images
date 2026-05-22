@@ -16,6 +16,20 @@ Three streams, three workflows, one Dockerfile that branches on a build arg:
 
 Every scheduled workflow is a **no-op when upstream hasn't moved.** The shape is: resolve upstream identity (npm dist-tag, GH release tag, commit SHA, or composite SHA tuple), compare to a committed state file, exit early if equal. Re-runs cost ~5 s of CI when nothing changed.
 
+### Two build patterns
+
+The npm-mode workflows (`build-latest`, `build-beta`, `manual`) build multi-arch in a single buildx pass using `.github/actions/build-and-push`. QEMU emulation is fine there because the `signalk-server` npm tarball ships the admin UI pre-built, so the in-container `npm install` does no JS/TS compilation — just unpacks and resolves dependencies, both of which emulate cheaply.
+
+The source-build workflows (`build-master`, `build-dirkwa`) fan out across **native runners** (`ubuntu-latest` for amd64, `ubuntu-24.04-arm` for arm64) using `.github/actions/build-and-push-arch`, then a final `merge` job assembles a manifest list with `docker buildx imagetools create`. Native runners are mandatory here because `vite build` of `@signalk/server-admin-ui` pulls in `rolldown`, whose native bindings do not resolve under QEMU — `npm install` "succeeds" but the bindings for the emulated platform never install, so `vite build` then dies with `MODULE_NOT_FOUND` for the arm64 binding when emulated on amd64.
+
+The source-build workflow shape is `prepare → build (matrix) → merge`:
+
+1. **`prepare`** (single runner): resolves upstream identity, applies the state gate, optionally clones master and merges PR branches (dirkwa only), uploads the resulting tree as an `actions/upload-artifact@v4` artifact.
+2. **`build`** (matrix, one job per platform on its native runner): downloads the prepared source if applicable, builds + pushes a single-arch image **by digest only** (no tag), uploads the digest as an artifact for the merge job to pick up.
+3. **`merge`** (single runner): downloads both digest artifacts, calls `docker buildx imagetools create` with both digests under the same tag, then commits the state-file update via `scripts/commit-state.sh`.
+
+Matrix job outputs cannot reliably aggregate across matrix entries — GitHub keeps the last entry's value rather than merging — so the per-arch digest passes through an `actions/upload-artifact` round-trip rather than a job output.
+
 ## Things that look wrong but aren't — read before "fixing"
 
 - **The `cp -rf node_modules/@signalk/* node_modules/signalk-server/node_modules/@signalk/` shuffle.** The admin UI walks the *nested* `node_modules/signalk-server/node_modules/` tree to discover workspace packages. Hoisting (which npm does by default) breaks it. Mirrors upstream's `Dockerfile_rel`.
