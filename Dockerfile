@@ -30,7 +30,8 @@ RUN apt-get update \
  && apt-get -y install --no-install-recommends \
       ca-certificates curl git sudo \
       python3 python3-venv python3-pip build-essential \
-      libcap2-bin procps nano \
+      libcap2-bin procps nano jq \
+      uidmap \
  && groupadd -r docker -g 991 \
  && groupadd -r i2c -g 990 \
  && groupadd -r spi -g 989 \
@@ -65,6 +66,10 @@ RUN apt-get update \
  && apt-get update \
  && apt-get -y install --no-install-recommends docker-ce-cli \
  && rm -rf /var/lib/apt/lists/*
+
+# Default podman service destination → host docker/podman socket if mounted.
+# Lets in-container `podman info` etc. work without CONTAINER_HOST being set.
+COPY containers.conf /etc/containers/containers.conf
 
 # -----------------------------------------------------------------------------
 # Stage 2: install — fetch SignalK server, lay out node_modules

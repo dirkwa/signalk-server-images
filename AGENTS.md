@@ -26,6 +26,8 @@ Every scheduled workflow is a **no-op when upstream hasn't moved.** The shape is
 - **`npm pack --workspaces` writes into the source dir, not `--pack-destination=`.** The `--pack-destination` flag ENOENTs on the first workspace tarball due to an npm race. Pack into source dir, then `mv ./*.tgz /tmp/skpack/`. Mirrors upstream's `build-docker.yml`.
 - **The BuildKit cache mount has `sharing=locked`, not `shared`.** Concurrent runs serialize on the cache to avoid corruption. Don't change to `shared`.
 - **No `npm cache clean -f` at the end of install.** The cache lives in the mount, not the layer. Cleaning would just force a re-download next run.
+- **`uidmap` is in the apt list.** Without `newuidmap`/`newgidmap`, in-container rootless podman fails its first real call with `newuidmap: executable file not found in $PATH`. Cheap to install (~85 KB), removes a confusing error.
+- **`/etc/containers/containers.conf` ships in the image.** Sets the default podman service destination to `unix:///var/run/docker.sock`, so `podman info` etc. work out of the box when the host socket is bind-mounted — no `CONTAINER_HOST` env needed. Pairs with the rootless fallback in dirkwa/signalk-container (commit 3d97e69).
 - **State files live in `state/*.txt` and are committed by the workflows themselves.** Not a GHA cache, not a repo variable, not an issue body. The git history is the audit trail. Concurrent commits use `scripts/commit-state.sh` which pulls --rebase + retries up to 5 times.
 
 ## Conventions the maintainer has set
