@@ -1,0 +1,66 @@
+name: Build and push signalk-server image
+description: Multi-arch buildx + push to GHCR. Shared by all build workflows.
+
+inputs:
+  source:
+    description: "Source for the server: npm or git"
+    required: true
+  version:
+    description: "npm version string (when source=npm)"
+    required: false
+    default: ""
+  git_ref:
+    description: "Git ref (when source=git)"
+    required: false
+    default: ""
+  tags:
+    description: "Comma-separated full image refs to push (e.g. ghcr.io/foo/bar:latest,ghcr.io/foo/bar:v2.27.0)"
+    required: true
+  platforms:
+    description: "buildx platforms"
+    required: false
+    default: "linux/amd64,linux/arm64"
+  upstream_sha:
+    description: "Upstream signalk-server commit SHA for image label"
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ github.token }}
+
+    - name: Build and push
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: ./Dockerfile
+        platforms: ${{ inputs.platforms }}
+        push: true
+        provenance: true
+        sbom: true
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+        build-args: |
+          SIGNALK_SOURCE=${{ inputs.source }}
+          SIGNALK_VERSION=${{ inputs.version }}
+          SIGNALK_GIT_REF=${{ inputs.git_ref }}
+        tags: ${{ inputs.tags }}
+        labels: |
+          org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          org.opencontainers.image.version=${{ inputs.version }}
+          org.opencontainers.image.revision=${{ inputs.upstream_sha }}
+          org.opencontainers.image.created=${{ github.event.repository.updated_at }}
+          org.opencontainers.image.title=signalk-server
+          org.opencontainers.image.description=Unofficial SignalK server Docker image (Ubuntu 26.04 + Node 24 + podman/docker-cli)

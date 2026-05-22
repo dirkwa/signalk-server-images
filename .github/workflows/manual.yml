@@ -1,0 +1,88 @@
+name: manual
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: "Source: npm or git"
+        type: choice
+        required: true
+        default: npm
+        options: [npm, git]
+      version:
+        description: "npm version (when source=npm), e.g. 2.27.0 or 2.28.0-beta.1"
+        type: string
+        required: false
+        default: ""
+      git_ref:
+        description: "Git ref (when source=git), e.g. master or a commit SHA"
+        type: string
+        required: false
+        default: "master"
+      extra_tag:
+        description: "Additional tag to push, e.g. test, custom-build. Image always also gets a deterministic tag."
+        type: string
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-manual-${{ github.event.inputs.source }}-${{ github.event.inputs.version }}${{ github.event.inputs.git_ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/signalk-server
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute tags
+        id: tags
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SRC="${{ inputs.source }}"
+          VER="${{ inputs.version }}"
+          REF="${{ inputs.git_ref }}"
+          EXTRA="${{ inputs.extra_tag }}"
+
+          if [ "$SRC" = "npm" ]; then
+            if [ -z "$VER" ]; then
+              echo "version is required when source=npm" >&2; exit 1
+            fi
+            DETERMINISTIC="${{ env.IMAGE }}:v${VER}"
+            SHA=$(gh api repos/SignalK/signalk-server/git/ref/tags/v${VER} --jq '.object.sha' 2>/dev/null || echo "")
+          else
+            if [ -z "$REF" ]; then
+              echo "git_ref is required when source=git" >&2; exit 1
+            fi
+            SHA=$(gh api repos/SignalK/signalk-server/commits/${REF} --jq .sha)
+            DETERMINISTIC="${{ env.IMAGE }}:git-${SHA:0:7}"
+          fi
+
+          TAGS="$DETERMINISTIC"
+          if [ -n "$EXTRA" ]; then
+            TAGS="${TAGS}"$'\n'"${{ env.IMAGE }}:${EXTRA}"
+          fi
+          {
+            echo "list<<EOF"
+            echo "$TAGS"
+            echo "EOF"
+            echo "sha=$SHA"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        uses: ./.github/actions/build-and-push
+        with:
+          source: ${{ inputs.source }}
+          version: ${{ inputs.version }}
+          git_ref: ${{ inputs.git_ref }}
+          upstream_sha: ${{ steps.tags.outputs.sha }}
+          tags: ${{ steps.tags.outputs.list }}

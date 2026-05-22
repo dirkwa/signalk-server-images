@@ -1,0 +1,91 @@
+name: build-beta
+
+on:
+  schedule:
+    - cron: "30 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: build-beta
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/signalk-server
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Find highest signalk-server beta release
+        id: ver
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # Pull recent releases, keep prereleases tagged *-beta.*, sort by semver, take top.
+          TAG=$(gh release list --repo SignalK/signalk-server --limit 50 \
+              --json tagName,isPrerelease,createdAt \
+            | jq -r '
+                map(select(.isPrerelease and (.tagName | test("-beta\\."))))
+                | sort_by(.createdAt) | reverse | .[0].tagName // empty
+              ')
+          if [ -z "$TAG" ]; then
+            echo "No beta release found upstream. Nothing to do."
+            echo "tag=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Compare to last-built state
+        if: steps.ver.outputs.tag != ''
+        id: gate
+        run: |
+          set -euo pipefail
+          LAST=$(cat state/last-beta.txt 2>/dev/null || echo "")
+          NEW="${{ steps.ver.outputs.version }}"
+          if [ "$LAST" = "$NEW" ]; then
+            echo "No change ($LAST). Skipping build."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Beta changed: $LAST -> $NEW"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve upstream commit SHA for label
+        if: steps.gate.outputs.changed == 'true'
+        id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SHA=$(gh api repos/SignalK/signalk-server/git/ref/tags/${{ steps.ver.outputs.tag }} --jq '.object.sha' || echo "")
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push
+        if: steps.gate.outputs.changed == 'true'
+        uses: ./.github/actions/build-and-push
+        with:
+          source: npm
+          version: ${{ steps.ver.outputs.version }}
+          upstream_sha: ${{ steps.sha.outputs.sha }}
+          tags: |
+            ${{ env.IMAGE }}:beta
+            ${{ env.IMAGE }}:v${{ steps.ver.outputs.version }}
+
+      - name: Update state file
+        if: steps.gate.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          echo "${{ steps.ver.outputs.version }}" > state/last-beta.txt
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/last-beta.txt
+          git commit -m "chore(state): beta v${{ steps.ver.outputs.version }} [skip ci]"
+          git push

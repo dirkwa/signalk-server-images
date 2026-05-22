@@ -1,0 +1,38 @@
+services:
+  signalk-server:
+    image: ghcr.io/dirkwa/signalk-server:latest
+    container_name: signalk-server
+    restart: unless-stopped
+    # Host networking is the easiest path for mDNS advertisement
+    # (pure-JS @astronautlabs/mdns inside the server uses raw UDP multicast).
+    network_mode: host
+    # Bridge alternative — pick this OR network_mode: host, not both.
+    # ports:
+    #   - "3000:3000"
+
+    # USB serial / I2C / SPI access for plugins
+    privileged: true
+    devices:
+      - /dev:/dev
+
+    volumes:
+      - ./signalk-data:/home/node/.signalk
+
+      # Optional: container-orchestration plugins (signalk-container,
+      # signalk-questdb, signalk-grafana) talk to the host runtime via
+      # a bind-mounted socket. Pick whichever your host runs.
+      #
+      # Docker host:
+      # - /var/run/docker.sock:/var/run/docker.sock
+      #
+      # Podman host (rootless):
+      # - /run/user/1000/podman/podman.sock:/var/run/docker.sock
+
+      # Optional: BLE plugin support (mount host D-Bus)
+      # - /run/dbus:/run/dbus:ro
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

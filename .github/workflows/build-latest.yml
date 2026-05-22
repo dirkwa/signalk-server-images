@@ -1,0 +1,86 @@
+name: build-latest
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: build-latest
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/signalk-server
+  MIN_VERSION: "2.27.0"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve latest stable version
+        id: ver
+        run: |
+          set -euo pipefail
+          LATEST=$(curl -fsSL https://registry.npmjs.org/-/package/signalk-server/dist-tags | jq -r .latest)
+          if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
+            echo "Failed to resolve npm dist-tag 'latest'" >&2; exit 1
+          fi
+          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+
+      - name: Compare to last-built state
+        id: gate
+        run: |
+          set -euo pipefail
+          LAST=$(cat state/last-stable.txt 2>/dev/null || echo "")
+          NEW="${{ steps.ver.outputs.version }}"
+          # semver gte MIN_VERSION
+          node -e "
+            const semver = (a,b) => a.split('.').map(Number).reduce((acc,n,i)=>acc||(n - (b.split('.').map(Number)[i]||0)),0);
+            if (semver('${NEW}','${MIN_VERSION}') < 0) { console.error('Refusing to build < ${MIN_VERSION}'); process.exit(1); }
+          "
+          if [ "$LAST" = "$NEW" ]; then
+            echo "No change ($LAST). Skipping build."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Stable changed: $LAST -> $NEW"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Resolve upstream commit SHA for label
+        if: steps.gate.outputs.changed == 'true'
+        id: sha
+        run: |
+          set -euo pipefail
+          TAG="v${{ steps.ver.outputs.version }}"
+          SHA=$(gh api repos/SignalK/signalk-server/git/ref/tags/${TAG} --jq '.object.sha' || echo "")
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Build and push
+        if: steps.gate.outputs.changed == 'true'
+        uses: ./.github/actions/build-and-push
+        with:
+          source: npm
+          version: ${{ steps.ver.outputs.version }}
+          upstream_sha: ${{ steps.sha.outputs.sha }}
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:v${{ steps.ver.outputs.version }}
+
+      - name: Update state file
+        if: steps.gate.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          echo "${{ steps.ver.outputs.version }}" > state/last-stable.txt
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/last-stable.txt
+          git commit -m "chore(state): stable v${{ steps.ver.outputs.version }} [skip ci]"
+          git push

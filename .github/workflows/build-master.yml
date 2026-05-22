@@ -1,0 +1,72 @@
+name: build-master
+
+on:
+  schedule:
+    - cron: "15 */3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+concurrency:
+  group: build-master
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/signalk-server
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve upstream master HEAD
+        id: sha
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SHA=$(gh api repos/SignalK/signalk-server/commits/master --jq .sha)
+          if [ -z "$SHA" ] || [ "$SHA" = "null" ]; then
+            echo "Failed to resolve master HEAD" >&2; exit 1
+          fi
+          echo "sha=$SHA"            >> "$GITHUB_OUTPUT"
+          echo "short=${SHA:0:7}"    >> "$GITHUB_OUTPUT"
+
+      - name: Compare to last-built state
+        id: gate
+        run: |
+          set -euo pipefail
+          LAST=$(cat state/last-master-sha.txt 2>/dev/null || echo "")
+          NEW="${{ steps.sha.outputs.sha }}"
+          if [ "$LAST" = "$NEW" ]; then
+            echo "No change ($LAST). Skipping build."
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "master changed: $LAST -> $NEW"
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push
+        if: steps.gate.outputs.changed == 'true'
+        uses: ./.github/actions/build-and-push
+        with:
+          source: git
+          git_ref: master
+          upstream_sha: ${{ steps.sha.outputs.sha }}
+          tags: |
+            ${{ env.IMAGE }}:master
+            ${{ env.IMAGE }}:master-${{ steps.sha.outputs.short }}
+
+      - name: Update state file
+        if: steps.gate.outputs.changed == 'true'
+        run: |
+          set -euo pipefail
+          echo "${{ steps.sha.outputs.sha }}" > state/last-master-sha.txt
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add state/last-master-sha.txt
+          git commit -m "chore(state): master ${{ steps.sha.outputs.short }} [skip ci]"
+          git push
