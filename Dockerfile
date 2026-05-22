@@ -91,11 +91,14 @@ RUN set -eux; \
     cd src; \
     npm install; \
     npm run build:all; \
-    npm pack --workspaces --pack-destination=/tmp/skpack; \
-    npm pack --pack-destination=/tmp/skpack; \
+    npm pack --workspaces; \
+    npm pack; \
+    rm -f signalk-typedoc-signalk-theme-*.tgz; \
+    mkdir -p /tmp/skpack; \
+    mv ./*.tgz /tmp/skpack/; \
     cd /home/node/signalk; \
     rm -rf src; \
-    npm install /tmp/skpack/signalk-server-*.tgz /tmp/skpack/signalk-*.tgz; \
+    npm install /tmp/skpack/*.tgz; \
     rm -rf /tmp/skpack; \
   else \
     if [ -z "$SIGNALK_VERSION" ]; then \
