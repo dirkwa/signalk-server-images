@@ -89,7 +89,7 @@ RUN set -eux; \
     git clone --depth=1 --branch="$SIGNALK_GIT_REF" \
       https://github.com/SignalK/signalk-server.git src; \
     cd src; \
-    npm ci; \
+    npm install; \
     npm run build:all; \
     npm pack --workspaces --pack-destination=/tmp/skpack; \
     npm pack --pack-destination=/tmp/skpack; \
