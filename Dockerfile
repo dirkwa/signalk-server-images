@@ -31,7 +31,7 @@ RUN apt-get update \
       ca-certificates curl git sudo \
       python3 python3-venv python3-pip build-essential \
       libcap2-bin procps nano jq \
-      uidmap \
+      uidmap fuse-overlayfs \
  && groupadd -r docker -g 991 \
  && groupadd -r i2c -g 990 \
  && groupadd -r spi -g 989 \
