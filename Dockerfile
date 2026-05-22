@@ -92,7 +92,8 @@ COPY --chown=node:node ./signalk-src/ /tmp/signalk-src/
 #   cloning. Lets the workflow merge PR branches before building.
 # After install, relocate @signalk/* and @mxtommy/kip into the nested
 # node_modules/signalk-server/node_modules/ tree the admin UI expects.
-RUN set -eux; \
+RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,sharing=locked \
+    set -eux; \
   build_from_src() { \
     cd "$1"; \
     npm install; \
@@ -139,8 +140,7 @@ RUN set -eux; \
   if [ -d node_modules/@mxtommy/kip ]; then \
     cp -rf node_modules/@mxtommy/kip node_modules/signalk-server/node_modules/@mxtommy/; \
     rm -rf node_modules/@mxtommy/; \
-  fi; \
-  npm cache clean -f
+  fi
 
 COPY --chown=node:node --chmod=755 startup.sh /home/node/signalk/startup.sh
 
