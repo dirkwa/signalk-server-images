@@ -1,0 +1,4 @@
+# Force LF line endings on checkout regardless of the host's
+# core.autocrlf setting. Shell scripts (startup.sh, scripts/*) and
+# Dockerfiles will silently break if checked out as CRLF on Windows.
+* text=auto eol=lf
