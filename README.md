@@ -19,7 +19,7 @@ Registry: `ghcr.io/dirkwa/signalk-server`
 | `vX.Y.Z-beta.N` | Pinned beta release | published alongside `beta` |
 | `master` | HEAD of `SignalK/signalk-server` `master` branch | every 3 h |
 | `master-<sha7>` | Pinned commit on master | published alongside `master` |
-| `dirkwa` | master + a personal stack of upstream PRs (2588, 2702, 2703, 2689, 2709) merged in order | every 3 h (+45 min offset) |
+| `dirkwa` | master + a personal stack of upstream PRs (2588, 2702, 2703, 2689) merged in order | every 3 h (+45 min offset) |
 | `dirkwa-<sha7>` | Pinned commit on the merged stack | published alongside `dirkwa` |
 
 Each workflow only builds and pushes when the resolved upstream version (or commit SHA) differs from what's in `state/`. Re-runs against unchanged upstream are no-ops.
