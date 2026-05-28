@@ -157,8 +157,13 @@ FROM install AS final
 USER node
 WORKDIR /home/node/.signalk
 
+# SIGNALK_SERVER_IS_UPDATABLE makes the server compute the "new version
+# available" footer notice even though it is launched from a local
+# (non-system) install path. The self-update button stays hidden via
+# IS_IN_DOCKER, which gates canUpdateServer separately.
 ENV SKIP_ADMINUI_VERSION_CHECK=true \
-    IS_IN_DOCKER=true
+    IS_IN_DOCKER=true \
+    SIGNALK_SERVER_IS_UPDATABLE=true
 
 EXPOSE 3000
 
