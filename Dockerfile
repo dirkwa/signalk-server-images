@@ -24,20 +24,33 @@ RUN userdel -r ubuntu 2>/dev/null || true \
  && groupadd --gid 1000 node \
  && useradd --uid 1000 --gid node --shell /bin/bash --create-home node
 
-# Core system packages (no avahi/dbus — server uses pure-JS @astronautlabs/mdns;
-# no bluez — BLE plugins should bind-mount host /run/dbus and use host bluez).
+# Core system packages. No avahi-DAEMON (no second mDNS responder — the server
+# announces itself via pure-JS @astronautlabs/mdns). But libnss-mdns IS
+# included: it is the glibc NSS module that lets getaddrinfo()/dns.lookup()
+# resolve other devices' .local hostnames (e.g. a plugin reaching a Shelly at
+# shelly-xxxx.local) — pure-JS mDNS only ANNOUNCES, it never intercepts
+# getaddrinfo, so without this any .local lookup returns EAI_AGAIN. Pulled with
+# --no-install-recommends so avahi-daemon does NOT come along (it is a
+# Recommends, not a Depends); only the NSS module + avahi client libs land
+# (~144 KB, no daemon, no 5353 binder). The module resolves via the HOST's avahi
+# over a bind-mounted /run/avahi-daemon/socket (the installer Quadlet mounts it;
+# plain-Docker users add a volumes: line) and needs the mdns line in
+# /etc/nsswitch.conf below. No bluez — BLE plugins bind-mount host /run/dbus and
+# use host bluez.
 RUN apt-get update \
  && apt-get -y install --no-install-recommends \
       ca-certificates curl git sudo \
       python3 python3-venv python3-pip build-essential \
       libcap2-bin procps sysstat nano jq \
       uidmap fuse-overlayfs \
+      libnss-mdns \
  && groupadd -r docker -g 991 \
  && groupadd -r i2c -g 990 \
  && groupadd -r spi -g 989 \
  && (getent group netdev >/dev/null || groupadd -r netdev) \
  && (getent group dialout >/dev/null || groupadd -r dialout) \
  && usermod -a -G dialout,i2c,spi,netdev,docker node \
+ && sed -i -E 's/^(hosts:[[:space:]]+)(.*)$/\1files mdns4_minimal [NOTFOUND=return] dns/' /etc/nsswitch.conf \
  && rm -rf /var/lib/apt/lists/*
 
 # Node.js via NodeSource (nodistro suite = codename-agnostic, survives base bumps)
