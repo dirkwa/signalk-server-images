@@ -16,6 +16,8 @@ Three streams, three workflows, one Dockerfile that branches on a build arg:
 
 Every scheduled workflow is a **no-op when upstream hasn't moved.** The shape is: resolve upstream identity (npm dist-tag, GH release tag, commit SHA, or composite SHA tuple), compare to a committed state file, exit early if equal. Re-runs cost ~5 s of CI when nothing changed.
 
+**Gotcha: the state gate keys on the UPSTREAM source, NOT this repo.** A change to the `Dockerfile` (or anything else in this repo) does **not** move the state key, so the next scheduled run skips the build and your Dockerfile change never reaches a published image — even though the run reports "success". To force a rebuild after a Dockerfile change, move the composite key: for `:dirkwa`, add/bump a PR in the `PRS:` env (its SHA feeds the composite); for `:latest`/`:beta`/`:master`, wait for the upstream tag/SHA to move or reset the relevant `state/*.txt`. (This bit us on the libnss-mdns change 2026-07 — the Dockerfile edit sat on main unbuilt until PR 2812 was added to `PRS:`.)
+
 ### Two build patterns
 
 The npm-mode workflows (`build-latest`, `build-beta`, `manual`) build multi-arch in a single buildx pass using `.github/actions/build-and-push`. QEMU emulation is fine there because the `signalk-server` npm tarball ships the admin UI pre-built, so the in-container `npm install` does no JS/TS compilation — just unpacks and resolves dependencies, both of which emulate cheaply.
