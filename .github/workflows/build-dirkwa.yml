@@ -27,6 +27,7 @@ jobs:
       changed: ${{ steps.gate.outputs.changed }}
       combined_sha: ${{ steps.stack.outputs.combined_sha }}
       combined_short: ${{ steps.stack.outputs.combined_short }}
+      version: ${{ steps.stack.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
@@ -91,6 +92,15 @@ jobs:
           echo "combined_sha=$combined_sha" >> "$GITHUB_OUTPUT"
           echo "combined_short=${combined_sha:0:7}" >> "$GITHUB_OUTPUT"
 
+          # signalk-server version for the org.opencontainers.image.version
+          # label. Best-effort: the updater's RuntimeIdentity resolver uses
+          # the label as its backup answer when the live /signalk probe
+          # can't reach the server; an empty label leaves the Dashboard
+          # showing no version at all on such installs.
+          version=$(jq -r '.version // empty' package.json || true)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "signalk-server version: ${version:-<none>}"
+
           # Remove .git so the artifact stays small and the build context
           # later doesn't hash a giant pack file.
           rm -rf .git
@@ -133,6 +143,7 @@ jobs:
         with:
           platform: ${{ matrix.platform }}
           source: local
+          version: ${{ needs.prepare.outputs.version }}
           image: ${{ env.IMAGE }}
           upstream_sha: ${{ needs.prepare.outputs.combined_sha }}
 

@@ -24,6 +24,7 @@ jobs:
       sha: ${{ steps.sha.outputs.sha }}
       short: ${{ steps.sha.outputs.short }}
       changed: ${{ steps.gate.outputs.changed }}
+      version: ${{ steps.sha.outputs.version }}
     steps:
       - uses: actions/checkout@v7
 
@@ -39,6 +40,16 @@ jobs:
           fi
           echo "sha=$SHA"            >> "$GITHUB_OUTPUT"
           echo "short=${SHA:0:7}"    >> "$GITHUB_OUTPUT"
+
+          # signalk-server version at that SHA, for the
+          # org.opencontainers.image.version label. Best-effort (empty on
+          # failure, no build abort): the updater's RuntimeIdentity
+          # resolver uses the label as its backup answer when the live
+          # /signalk probe can't reach the server.
+          VERSION=$(gh api "repos/SignalK/signalk-server/contents/package.json?ref=$SHA" \
+            --jq .content | base64 -d | jq -r '.version // empty' || true)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "signalk-server version: ${VERSION:-<none>}"
 
       - name: Compare to last-built state
         id: gate
@@ -78,6 +89,7 @@ jobs:
           platform: ${{ matrix.platform }}
           source: git
           git_ref: master
+          version: ${{ needs.prepare.outputs.version }}
           image: ${{ env.IMAGE }}
           upstream_sha: ${{ needs.prepare.outputs.sha }}
 

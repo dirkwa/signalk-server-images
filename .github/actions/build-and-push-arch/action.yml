@@ -12,7 +12,13 @@ inputs:
     description: "SIGNALK_SOURCE build arg: npm | git | local."
     required: true
   version:
-    description: "npm version string (when source=npm)."
+    description: >-
+      signalk-server version string. Consumed as the SIGNALK_VERSION build
+      arg when source=npm, and always stamped into the
+      org.opencontainers.image.version label — the updater's
+      RuntimeIdentity resolver reads that label as its backup answer when
+      the live /signalk probe can't reach the server, so git/local builds
+      should pass the resolved upstream version too.
     required: false
     default: ""
   git_ref:
