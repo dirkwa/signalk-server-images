@@ -71,6 +71,22 @@ jobs:
           set -euo pipefail
           rm -rf signalk-src
           git clone https://github.com/${{ env.UPSTREAM }}.git signalk-src
+
+          # Seed pre-recorded conflict resolutions (see ./rerere-cache/README.md)
+          # BEFORE cd'ing in, so known adjacent-edit conflicts between stacked
+          # PRs replay automatically instead of failing the build. New or changed
+          # conflicts still fail hard below (rerere only resolves what it recorded).
+          git config --global rerere.enabled true
+          git config --global rerere.autoupdate true
+          if [ -d rerere-cache ]; then
+            mkdir -p signalk-src/.git/rr-cache
+            # Copy only the hash-named resolution dirs, not the README.
+            for d in rerere-cache/*/; do
+              [ -d "$d" ] && cp -r "$d" signalk-src/.git/rr-cache/
+            done
+            echo "Seeded rr-cache: $(ls signalk-src/.git/rr-cache 2>/dev/null | tr '\n' ' ')"
+          fi
+
           cd signalk-src
           git config user.email "build@dirkwa.local"
           git config user.name  "dirkwa build"
@@ -80,12 +96,26 @@ jobs:
             echo "::group::Merging PR #$pr"
             head_sha=$(gh api repos/${{ env.UPSTREAM }}/pulls/$pr --jq '.head.sha')
             git fetch origin "pull/$pr/head:pr-$pr"
-            if ! git merge --no-ff --no-edit -m "Merge SignalK/signalk-server#$pr ($head_sha)" "pr-$pr"; then
-              echo "::error::PR #$pr conflicts with the current stack on master."
-              git merge --abort || true
-              exit 1
+            if git merge --no-ff --no-edit -m "Merge SignalK/signalk-server#$pr ($head_sha)" "pr-$pr"; then
+              echo "::endgroup::"
+              continue
             fi
-            echo "::endgroup::"
+            # Merge reported conflicts. rerere (autoupdate) replays and stages any
+            # resolution it has on record; if nothing is left unresolved AND no
+            # conflict markers survive in the tree, the merge is safe to commit.
+            # Otherwise it is a new/unreviewed conflict -> fail hard.
+            unmerged=$(git diff --name-only --diff-filter=U)
+            markers=$(git -c core.pager=cat grep -lE '^(<{7}|={7}|>{7})( |$)' -- . || true)
+            if [ -z "$unmerged" ] && [ -z "$markers" ]; then
+              git commit --no-edit -m "Merge SignalK/signalk-server#$pr ($head_sha)"
+              echo "::notice::PR #$pr conflict auto-resolved from rerere-cache."
+              echo "::endgroup::"
+              continue
+            fi
+            echo "::error::PR #$pr conflicts with the current stack on master (no recorded rerere resolution)."
+            echo "Unmerged files:"; git diff --name-only --diff-filter=U || true
+            git merge --abort || true
+            exit 1
           done
 
           combined_sha=$(git rev-parse HEAD)
