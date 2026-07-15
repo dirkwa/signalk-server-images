@@ -16,7 +16,7 @@ concurrency:
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/signalk-server
   UPSTREAM: SignalK/signalk-server
-  PRS: "2588 2524"
+  PRS: "2588 2524 2837"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
