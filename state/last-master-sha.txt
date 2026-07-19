@@ -1,1 +1,1 @@
-5d9639abc03bc3387d4b1469c8b0c7fda8aa7130
+force-rebuild-npm12-allow-scripts
