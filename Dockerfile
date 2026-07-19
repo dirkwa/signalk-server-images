@@ -98,6 +98,19 @@ WORKDIR /home/node/signalk
 
 RUN mkdir -p /home/node/.signalk
 
+# npm >= 12 gates dependency lifecycle scripts behind an approval list and
+# SKIPS unapproved ones (only a `npm warn install-scripts` hints at it).
+# @canboat/canboatjs compiles its SocketCAN addon in its install script
+# (`node-gyp rebuild || echo '...'`) — the `|| echo` makes the skip silent,
+# which shipped images where canbus-canboatjs could not open can0 (npm 11 ->
+# 12 bump via npm@latest, 2026-07). Approve exactly that package via a
+# project-scoped .npmrc: `--allow-scripts` on the command line is rejected
+# for project installs (EALLOWSCRIPTS), and this stays scoped to
+# /home/node/signalk — runtime appstore installs run in /home/node/.signalk
+# and remain gated. The assertion after the install below fails the build
+# loudly if the addon is ever missing again.
+RUN printf 'allow-scripts[]=@canboat/canboatjs\n' > /home/node/signalk/.npmrc
+
 # When SOURCE=local, the workflow places a pre-prepared signalk-server checkout
 # at ./signalk-src/ in the build context (e.g. master + a stack of merged PRs).
 # When SOURCE != local, the dir contains just a .keep placeholder which we
@@ -149,6 +162,10 @@ RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,sharing=locked \
       echo "Unknown SIGNALK_SOURCE: $SIGNALK_SOURCE" >&2; exit 1; \
       ;; \
   esac; \
+  test -f node_modules/@canboat/canboatjs/build/Release/canSocket.node || { \
+    echo "canboatjs native canSocket addon missing — npm skipped install scripts (allow-scripts gate)?" >&2; \
+    exit 1; \
+  }; \
   mkdir -p node_modules/signalk-server/node_modules/@signalk/; \
   if [ -d node_modules/@signalk ]; then \
     cp -rf node_modules/@signalk/* node_modules/signalk-server/node_modules/@signalk/; \
