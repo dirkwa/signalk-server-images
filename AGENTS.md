@@ -61,6 +61,7 @@ Matrix job outputs cannot reliably aggregate across matrix entries — GitHub ke
 ## When you need to change something
 
 - **Adding/removing a PR from the `:dirkwa` stack** → edit the `PRS:` env in `.github/workflows/build-dirkwa.yml`. That's the only source of truth. Composite state key auto-updates.
+- **Stripping a bundled package/webapp from a variant** → `STRIP_PACKAGES` build arg: space-separated npm names, removed at the END of the install `RUN` (same layer, so the bytes never ship; both the hoisted and the nested `node_modules/signalk-server/node_modules/` copies). Threaded through the `strip_packages` input of `.github/actions/build-and-push-arch`; currently only `build-dirkwa.yml` sets it (`@signalk/instrumentpanel`). Default empty = keep everything, so `:latest`/`:beta`/`:master` mirror upstream. Remember the state-gate gotcha above: the workflow edit alone does not trigger a rebuild.
 - **Bumping the SignalK minimum stable version** → `MIN_VERSION` in `build-latest.yml`. Workflow refuses to build below it.
 - **Changing the base image (Ubuntu / Node)** → top of `Dockerfile`. Dependabot will eventually offer base-image bumps as PRs.
 - **Adding a new image variant (e.g. `:nightly` from a feature branch)** → copy `build-master.yml`, change the env, ref, and tag. Reuse `.github/actions/build-and-push` and `scripts/commit-state.sh`.
