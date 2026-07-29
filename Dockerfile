@@ -8,6 +8,9 @@
 #   SIGNALK_SOURCE   one of: npm | git
 #   SIGNALK_GIT_REF  git ref (branch, tag, sha) when SOURCE=git; default: master
 #   NODE_MAJOR       Node.js major version installed via NodeSource (default 24)
+#   STRIP_PACKAGES   space-separated npm package names to delete after install,
+#                    e.g. "@signalk/instrumentpanel" — for dropping bundled
+#                    webapps from a variant. Default: keep everything.
 
 ARG NODE_MAJOR=24
 
@@ -92,6 +95,7 @@ FROM base AS install
 ARG SIGNALK_VERSION
 ARG SIGNALK_SOURCE=npm
 ARG SIGNALK_GIT_REF=master
+ARG STRIP_PACKAGES=""
 
 USER node
 WORKDIR /home/node/signalk
@@ -123,6 +127,8 @@ COPY --chown=node:node ./signalk-src/ /tmp/signalk-src/
 #   cloning. Lets the workflow merge PR branches before building.
 # After install, relocate @signalk/* and @mxtommy/kip into the nested
 # node_modules/signalk-server/node_modules/ tree the admin UI expects.
+# STRIP_PACKAGES removal happens at the end of the SAME RUN so the deleted
+# bytes never persist in any layer (a later RUN would only mask them).
 RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,sharing=locked \
     set -eux; \
   build_from_src() { \
@@ -175,7 +181,11 @@ RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,sharing=locked \
   if [ -d node_modules/@mxtommy/kip ]; then \
     cp -rf node_modules/@mxtommy/kip node_modules/signalk-server/node_modules/@mxtommy/; \
     rm -rf node_modules/@mxtommy/; \
-  fi
+  fi; \
+  for p in $STRIP_PACKAGES; do \
+    echo "Stripping $p"; \
+    rm -rf "node_modules/$p" "node_modules/signalk-server/node_modules/$p"; \
+  done
 
 COPY --chown=node:node --chmod=755 startup.sh /home/node/signalk/startup.sh
 

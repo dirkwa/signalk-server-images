@@ -146,6 +146,7 @@ jobs:
           version: ${{ needs.prepare.outputs.version }}
           image: ${{ env.IMAGE }}
           upstream_sha: ${{ needs.prepare.outputs.combined_sha }}
+          strip_packages: "@signalk/instrumentpanel"
 
       - name: Stash digest for the merge job
         run: |

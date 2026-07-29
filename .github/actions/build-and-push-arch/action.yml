@@ -32,6 +32,13 @@ inputs:
     description: "Upstream signalk-server commit SHA for image label."
     required: false
     default: ""
+  strip_packages:
+    description: >-
+      Space-separated npm package names removed from the installed tree at
+      the end of the install stage (STRIP_PACKAGES build arg), e.g.
+      "@signalk/instrumentpanel". Empty keeps everything.
+    required: false
+    default: ""
 
 outputs:
   digest:
@@ -67,6 +74,7 @@ runs:
           SIGNALK_SOURCE=${{ inputs.source }}
           SIGNALK_VERSION=${{ inputs.version }}
           SIGNALK_GIT_REF=${{ inputs.git_ref }}
+          STRIP_PACKAGES=${{ inputs.strip_packages }}
         outputs: type=image,name=${{ inputs.image }},push-by-digest=true,name-canonical=true,push=true
         labels: |
           org.opencontainers.image.source=https://github.com/${{ github.repository }}
