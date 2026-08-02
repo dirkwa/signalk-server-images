@@ -24,6 +24,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       composite: ${{ steps.shas.outputs.composite }}
+      master_sha: ${{ steps.shas.outputs.master_sha }}
+      prs: ${{ steps.shas.outputs.prs }}
       changed: ${{ steps.gate.outputs.changed }}
       combined_sha: ${{ steps.stack.outputs.combined_sha }}
       combined_short: ${{ steps.stack.outputs.combined_short }}
@@ -39,11 +41,15 @@ jobs:
           set -euo pipefail
           MASTER_SHA=$(gh api repos/${{ env.UPSTREAM }}/commits/master --jq .sha)
           composite="master:$MASTER_SHA"
+          prs=""
           for pr in ${{ env.PRS }}; do
             pr_sha=$(gh api repos/${{ env.UPSTREAM }}/pulls/$pr --jq '.head.sha')
             composite="$composite pr$pr:$pr_sha"
+            prs="$prs $pr:${pr_sha:0:7}"
           done
           echo "composite=$composite" >> "$GITHUB_OUTPUT"
+          echo "master_sha=$MASTER_SHA" >> "$GITHUB_OUTPUT"
+          echo "prs=${prs# }" >> "$GITHUB_OUTPUT"
           echo "Composite key: $composite"
 
       - name: Compare to last-built state
@@ -147,6 +153,9 @@ jobs:
           image: ${{ env.IMAGE }}
           upstream_sha: ${{ needs.prepare.outputs.combined_sha }}
           strip_packages: "@signalk/instrumentpanel"
+          extra_labels: |
+            io.dirkwa.signalk.prs=${{ needs.prepare.outputs.prs }}
+            io.dirkwa.signalk.base-sha=${{ needs.prepare.outputs.master_sha }}
 
       - name: Stash digest for the merge job
         run: |

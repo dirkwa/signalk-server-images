@@ -39,6 +39,13 @@ inputs:
       "@signalk/instrumentpanel". Empty keeps everything.
     required: false
     default: ""
+  extra_labels:
+    description: >-
+      Additional newline-separated label lines appended verbatim to the
+      standard OCI label set, e.g. "io.dirkwa.signalk.prs=2588:ab12cd3".
+      Empty keeps the standard labels only.
+    required: false
+    default: ""
 
 outputs:
   digest:
@@ -83,3 +90,4 @@ runs:
           org.opencontainers.image.created=${{ github.event.repository.updated_at }}
           org.opencontainers.image.title=signalk-server
           org.opencontainers.image.description=Unofficial SignalK server Docker image (Ubuntu 26.04 + Node 24 + podman/docker-cli)
+          ${{ inputs.extra_labels }}
