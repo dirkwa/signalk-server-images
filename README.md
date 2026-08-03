@@ -27,8 +27,9 @@ Each workflow only builds and pushes when the resolved upstream version (or comm
 ### Native canboat N2K decoding (`:dirkwa` only)
 
 The `:dirkwa` image additionally bundles [canboat](https://github.com/canboat/canboat)'s
-prebuilt C tools (`analyzer`, `actisense-serial`, `candump2analyzer`, installed
-to `/opt/canboat` with the three binaries symlinked into `/usr/local/bin`) plus
+prebuilt C tools (`analyzer` plus the gateway bridges `actisense-serial`,
+`candump2analyzer`, `maretron-ipg`, `ikonvert-serial`, `socketcan-serial`,
+installed to `/opt/canboat` and symlinked into `/usr/local/bin`) plus
 `can-utils`. The bundled canboat version is recorded in the
 `io.dirkwa.canboat.version` image label.
 
@@ -41,8 +42,9 @@ analyzer)" and native `canbus` options become selectable. Notes:
   pick a non-canboatjs connection type.
 - **Outbound PGN encoding always goes through canboatjs**, even on a native
   connection — plugins that transmit are unaffected either way.
-- Only NGT-1 and SocketCAN (`canbus`) have native options in the UI. YDWG,
-  iKonvert, NavLink2, W2K-1 and Maretron IPG remain canboatjs-only.
+- Native options in the UI: NGT-1, SocketCAN (`canbus`, bidirectional via
+  `socketcan-serial`), iKonvert and Maretron IPG100. YDWG, NavLink2 and
+  W2K-1 remain canboatjs-only (canboat has no bridge tools for them).
 - To switch back, change the connection type back to the canboatjs variant in
   the connection editor. Do this **before** downgrading to an image without
   the tools — on such an image a native-configured connection fails with an

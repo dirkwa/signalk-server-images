@@ -93,12 +93,13 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
 # canboatjs remains the default and still performs ALL outbound PGN encoding
 # (execute.ts pgnToActisenseSerialFormat) even for native connections — hence
 # the allow-scripts/canSocket.node machinery below stays untouched.
-# Only the three binaries the server pipeline invokes are symlinked; the rest
-# of /opt/canboat stays off PATH so an unrelated tool name can never shadow
-# anything. Renaming/relocating the `analyzer` symlink silently removes the
-# UI option — commandExists probes that exact name. can-utils provides
-# `candump` for the native canbus subtype (`candump | candump2analyzer`) and
-# is installed here, not in the core list, to keep the gate airtight.
+# Only the binaries the server pipeline invokes are symlinked (analyzer plus
+# the per-gateway bridge tools); the rest of /opt/canboat stays off PATH so
+# an unrelated tool name can never shadow anything. Renaming/relocating the
+# `analyzer` symlink silently removes the UI options — commandExists probes
+# that exact name. can-utils provides `candump`/`cansend` for ad-hoc CAN
+# debugging and is installed here, not in the core list, to keep the gate
+# airtight.
 # The tarball is digest-pinned per version+arch (release assets are mutable);
 # bumping CANBOAT_VERSION means adding the new sha256 lines below, and any
 # unlisted combination fails the build rather than trusting the download.
@@ -128,7 +129,7 @@ RUN set -eux; \
   echo "${CB_SHA256}  /tmp/canboat.tgz" | sha256sum -c - >/dev/null; \
   tar xzf /tmp/canboat.tgz -C /opt/canboat; \
   rm -f /tmp/canboat.tgz; \
-  for b in analyzer actisense-serial candump2analyzer; do \
+  for b in analyzer actisense-serial candump2analyzer maretron-ipg ikonvert-serial socketcan-serial; do \
     test -x "/opt/canboat/$b" || { echo "canboat tarball is missing $b" >&2; exit 1; }; \
     ln -sf "/opt/canboat/$b" "/usr/local/bin/$b"; \
     command -v "$b" >/dev/null || { echo "$b not on PATH after symlink" >&2; exit 1; }; \

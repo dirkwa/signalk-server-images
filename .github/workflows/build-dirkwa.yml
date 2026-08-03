@@ -21,7 +21,7 @@ env:
   # upstream PR (yet). Space-separated "owner/repo:branch" specs. Each
   # branch's head SHA feeds the composite state key, so pushing to the
   # branch — or adding/removing one here — triggers a rebuild.
-  BRANCHES: "dirkwa/signalk-server:n2k-analyzer-camel-output"
+  BRANCHES: "dirkwa/signalk-server:n2k-analyzer-camel-output dirkwa/signalk-server:n2k-native-gateways"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
