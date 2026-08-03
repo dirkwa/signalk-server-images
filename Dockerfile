@@ -11,8 +11,18 @@
 #   STRIP_PACKAGES   space-separated npm package names to delete after install,
 #                    e.g. "@signalk/instrumentpanel" — for dropping bundled
 #                    webapps from a variant. Default: keep everything.
+#   INSTALL_CANBOAT  "1" installs canboat's prebuilt C tools (analyzer etc.),
+#                    activating signalk-server's native N2K decode path.
+#                    Default off so :latest/:beta/:master keep mirroring
+#                    upstream behaviour; only build-dirkwa.yml enables it.
+#   CANBOAT_VERSION  canboat release tag whose prebuilt C tools are installed
+#                    when INSTALL_CANBOAT=1. Only the v8.0.0 prereleases
+#                    publish Linux binaries — stable tags (<= v7.1.0) ship
+#                    Windows-only.
 
 ARG NODE_MAJOR=24
+ARG INSTALL_CANBOAT=0
+ARG CANBOAT_VERSION=v8.0.0-beta1
 
 # -----------------------------------------------------------------------------
 # Stage 1: base — OS, system packages, Node, container CLIs, user
@@ -20,6 +30,8 @@ ARG NODE_MAJOR=24
 FROM ubuntu:26.04 AS base
 
 ARG NODE_MAJOR
+ARG INSTALL_CANBOAT
+ARG CANBOAT_VERSION
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Replace Ubuntu's default uid:1000 user with `node` (matches upstream convention)
@@ -67,6 +79,62 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
  && npm cache clean -f \
  && npm install -g npm@latest \
  && rm -rf /var/lib/apt/lists/*
+
+# canboat C tools (INSTALL_CANBOAT=1, i.e. :dirkwa only) — activates
+# signalk-server's NATIVE NMEA 2000 decode path. The server already ships a
+# complete non-canboatjs N2K pipeline (N2kAnalyzer -> N2kToSignalK, spawning
+# `analyzer -json -si -camel`); it is inert only because the admin UI gates
+# the connection options on GET /skServer/hasAnalyzer ==
+# commandExists('analyzer'). Putting `analyzer` on PATH un-greys "Actisense
+# NGT-1" and the native canbus subtype with ZERO source changes in
+# signalk-server, n2k-signalk, canboatjs or any plugin. That is also why the
+# default is OFF: installing this in the shared base would silently change
+# the connection editor in :latest/:beta/:master, which mirror upstream.
+# canboatjs remains the default and still performs ALL outbound PGN encoding
+# (execute.ts pgnToActisenseSerialFormat) even for native connections — hence
+# the allow-scripts/canSocket.node machinery below stays untouched.
+# Only the three binaries the server pipeline invokes are symlinked; the rest
+# of /opt/canboat stays off PATH so an unrelated tool name can never shadow
+# anything. Renaming/relocating the `analyzer` symlink silently removes the
+# UI option — commandExists probes that exact name. can-utils provides
+# `candump` for the native canbus subtype (`candump | candump2analyzer`) and
+# is installed here, not in the core list, to keep the gate airtight.
+# The tarball is digest-pinned per version+arch (release assets are mutable);
+# bumping CANBOAT_VERSION means adding the new sha256 lines below, and any
+# unlisted combination fails the build rather than trusting the download.
+# Assertions mirror the canSocket.node pattern: fail the build loudly, not at
+# sea. The -version run also catches an arch or glibc mismatch at build time.
+RUN set -eux; \
+  if [ "$INSTALL_CANBOAT" != "1" ]; then \
+    echo "INSTALL_CANBOAT=$INSTALL_CANBOAT — skipping canboat tools"; \
+    exit 0; \
+  fi; \
+  apt-get update; \
+  apt-get -y install --no-install-recommends can-utils; \
+  rm -rf /var/lib/apt/lists/*; \
+  case "$(dpkg --print-architecture)" in \
+    amd64) CB_ARCH=x86_64 ;; \
+    arm64) CB_ARCH=aarch64 ;; \
+    *) echo "unsupported architecture for canboat: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+  esac; \
+  case "${CANBOAT_VERSION}-${CB_ARCH}" in \
+    v8.0.0-beta1-x86_64)  CB_SHA256=85920250b1b704ed2a7d5665f82039a72295347d630d3b78d6e7c2633a683a97 ;; \
+    v8.0.0-beta1-aarch64) CB_SHA256=66e4ef05cea367c66992c897b41df6fa827e231b65fab545d9b4a4487c9ebb6d ;; \
+    *) echo "no pinned sha256 for canboat ${CANBOAT_VERSION} on ${CB_ARCH} — add the digest here when bumping CANBOAT_VERSION" >&2; exit 1 ;; \
+  esac; \
+  mkdir -p /opt/canboat; \
+  curl -fsSL -o /tmp/canboat.tgz \
+    "https://github.com/canboat/canboat/releases/download/${CANBOAT_VERSION}/canboat-linux-${CB_ARCH}-${CANBOAT_VERSION}.tar.gz"; \
+  echo "${CB_SHA256}  /tmp/canboat.tgz" | sha256sum -c - >/dev/null; \
+  tar xzf /tmp/canboat.tgz -C /opt/canboat; \
+  rm -f /tmp/canboat.tgz; \
+  for b in analyzer actisense-serial candump2analyzer; do \
+    test -x "/opt/canboat/$b" || { echo "canboat tarball is missing $b" >&2; exit 1; }; \
+    ln -sf "/opt/canboat/$b" "/usr/local/bin/$b"; \
+    command -v "$b" >/dev/null || { echo "$b not on PATH after symlink" >&2; exit 1; }; \
+  done; \
+  analyzer -version >/dev/null || { echo "analyzer present but not executable (arch/glibc mismatch?)" >&2; exit 1; }; \
+  command -v candump >/dev/null || { echo "candump missing after can-utils install" >&2; exit 1; }
 
 # Container runtime CLIs (mirrors SignalK/signalk-server PR #2695):
 # plugins like signalk-container/questdb/grafana need to drive a host-mounted

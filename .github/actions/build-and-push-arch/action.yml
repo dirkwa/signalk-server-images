@@ -46,6 +46,13 @@ inputs:
       Empty keeps the standard labels only.
     required: false
     default: ""
+  install_canboat:
+    description: >-
+      "1" installs canboat's prebuilt C tools (INSTALL_CANBOAT build arg),
+      activating signalk-server's native N2K decode option in the admin UI.
+      Default "0" keeps variants mirroring upstream behaviour.
+    required: false
+    default: "0"
 
 outputs:
   digest:
@@ -82,6 +89,7 @@ runs:
           SIGNALK_VERSION=${{ inputs.version }}
           SIGNALK_GIT_REF=${{ inputs.git_ref }}
           STRIP_PACKAGES=${{ inputs.strip_packages }}
+          INSTALL_CANBOAT=${{ inputs.install_canboat }}
         outputs: type=image,name=${{ inputs.image }},push-by-digest=true,name-canonical=true,push=true
         labels: |
           org.opencontainers.image.source=https://github.com/${{ github.repository }}
