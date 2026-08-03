@@ -23,6 +23,41 @@
 ARG NODE_MAJOR=24
 ARG INSTALL_CANBOAT=0
 ARG CANBOAT_VERSION=v8.0.0-beta1
+# CANBOAT_SOURCE=release installs the sha256-pinned prebuilt C tools (the
+# default); =git builds the Rust `canboat` binary from CANBOAT_REPO@
+# CANBOAT_REF instead — its argv[0] shims provide every tool the server
+# pipeline invokes (analyzer, actisense-serial, socketcan-serial,
+# ikonvert-serial, maretron-ipg) PLUS `canboat convert --from json`, the
+# native outbound encoder. Used to test canboat PR branches before release.
+ARG CANBOAT_SOURCE=release
+ARG CANBOAT_REPO=canboat/canboat
+ARG CANBOAT_REF=master
+
+# -----------------------------------------------------------------------------
+# Stage 0: canboat-build — Rust canboat binary, only consumed when
+# CANBOAT_SOURCE=git. Static musl build (same treatment as upstream's keel
+# release) so the binary is glibc-independent. The stage always parses but
+# its RUN exits immediately unless INSTALL_CANBOAT=1 AND CANBOAT_SOURCE=git,
+# so release-mode builds never pay the Rust compile.
+# -----------------------------------------------------------------------------
+FROM rust:1-slim-trixie AS canboat-build
+ARG INSTALL_CANBOAT
+ARG CANBOAT_SOURCE
+ARG CANBOAT_REPO
+ARG CANBOAT_REF
+RUN set -eux; \
+  mkdir -p /out; \
+  if [ "$INSTALL_CANBOAT" != "1" ] || [ "$CANBOAT_SOURCE" != "git" ]; then \
+    echo "canboat git build skipped (INSTALL_CANBOAT=$INSTALL_CANBOAT CANBOAT_SOURCE=$CANBOAT_SOURCE)"; \
+    exit 0; \
+  fi; \
+  apt-get update && apt-get -y install --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*; \
+  git clone --depth 1 --branch "$CANBOAT_REF" "https://github.com/$CANBOAT_REPO.git" /src; \
+  target="$(uname -m)-unknown-linux-musl"; \
+  rustup target add "$target"; \
+  cargo build --release --manifest-path /src/Cargo.toml -p canboat --target "$target"; \
+  cp "/src/target/$target/release/canboat" /out/canboat; \
+  /out/canboat --version
 
 # -----------------------------------------------------------------------------
 # Stage 1: base — OS, system packages, Node, container CLIs, user
@@ -32,6 +67,9 @@ FROM ubuntu:26.04 AS base
 ARG NODE_MAJOR
 ARG INSTALL_CANBOAT
 ARG CANBOAT_VERSION
+ARG CANBOAT_SOURCE
+ARG CANBOAT_REPO
+ARG CANBOAT_REF
 ENV DEBIAN_FRONTEND=noninteractive
 
 # Replace Ubuntu's default uid:1000 user with `node` (matches upstream convention)
@@ -105,35 +143,52 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
 # unlisted combination fails the build rather than trusting the download.
 # Assertions mirror the canSocket.node pattern: fail the build loudly, not at
 # sea. The -version run also catches an arch or glibc mismatch at build time.
+COPY --from=canboat-build /out/ /tmp/canboat-rust/
 RUN set -eux; \
   if [ "$INSTALL_CANBOAT" != "1" ]; then \
     echo "INSTALL_CANBOAT=$INSTALL_CANBOAT — skipping canboat tools"; \
+    rm -rf /tmp/canboat-rust; \
     exit 0; \
   fi; \
   apt-get update; \
   apt-get -y install --no-install-recommends can-utils; \
   rm -rf /var/lib/apt/lists/*; \
-  case "$(dpkg --print-architecture)" in \
-    amd64) CB_ARCH=x86_64 ;; \
-    arm64) CB_ARCH=aarch64 ;; \
-    *) echo "unsupported architecture for canboat: $(dpkg --print-architecture)" >&2; exit 1 ;; \
-  esac; \
-  case "${CANBOAT_VERSION}-${CB_ARCH}" in \
-    v8.0.0-beta1-x86_64)  CB_SHA256=85920250b1b704ed2a7d5665f82039a72295347d630d3b78d6e7c2633a683a97 ;; \
-    v8.0.0-beta1-aarch64) CB_SHA256=66e4ef05cea367c66992c897b41df6fa827e231b65fab545d9b4a4487c9ebb6d ;; \
-    *) echo "no pinned sha256 for canboat ${CANBOAT_VERSION} on ${CB_ARCH} — add the digest here when bumping CANBOAT_VERSION" >&2; exit 1 ;; \
-  esac; \
   mkdir -p /opt/canboat; \
-  curl -fsSL -o /tmp/canboat.tgz \
-    "https://github.com/canboat/canboat/releases/download/${CANBOAT_VERSION}/canboat-linux-${CB_ARCH}-${CANBOAT_VERSION}.tar.gz"; \
-  echo "${CB_SHA256}  /tmp/canboat.tgz" | sha256sum -c - >/dev/null; \
-  tar xzf /tmp/canboat.tgz -C /opt/canboat; \
-  rm -f /tmp/canboat.tgz; \
-  for b in analyzer actisense-serial candump2analyzer maretron-ipg ikonvert-serial socketcan-serial; do \
-    test -x "/opt/canboat/$b" || { echo "canboat tarball is missing $b" >&2; exit 1; }; \
-    ln -sf "/opt/canboat/$b" "/usr/local/bin/$b"; \
-    command -v "$b" >/dev/null || { echo "$b not on PATH after symlink" >&2; exit 1; }; \
-  done; \
+  if [ "$CANBOAT_SOURCE" = "git" ]; then \
+    # The single Rust binary from the canboat-build stage: every tool the
+    # server pipeline invokes is an argv[0] shim of it (candump2analyzer
+    # has no shim, but nothing uses it since canbus switched to
+    # socketcan-serial), and `canboat` itself is on PATH for
+    # `convert --from json` — the native outbound encoder.
+    install -m 0755 /tmp/canboat-rust/canboat /opt/canboat/canboat; \
+    for b in canboat analyzer actisense-serial maretron-ipg ikonvert-serial socketcan-serial; do \
+      ln -sf /opt/canboat/canboat "/usr/local/bin/$b"; \
+      command -v "$b" >/dev/null || { echo "$b not on PATH after symlink" >&2; exit 1; }; \
+    done; \
+    canboat --version; \
+  else \
+    case "$(dpkg --print-architecture)" in \
+      amd64) CB_ARCH=x86_64 ;; \
+      arm64) CB_ARCH=aarch64 ;; \
+      *) echo "unsupported architecture for canboat: $(dpkg --print-architecture)" >&2; exit 1 ;; \
+    esac; \
+    case "${CANBOAT_VERSION}-${CB_ARCH}" in \
+      v8.0.0-beta1-x86_64)  CB_SHA256=85920250b1b704ed2a7d5665f82039a72295347d630d3b78d6e7c2633a683a97 ;; \
+      v8.0.0-beta1-aarch64) CB_SHA256=66e4ef05cea367c66992c897b41df6fa827e231b65fab545d9b4a4487c9ebb6d ;; \
+      *) echo "no pinned sha256 for canboat ${CANBOAT_VERSION} on ${CB_ARCH} — add the digest here when bumping CANBOAT_VERSION" >&2; exit 1 ;; \
+    esac; \
+    curl -fsSL -o /tmp/canboat.tgz \
+      "https://github.com/canboat/canboat/releases/download/${CANBOAT_VERSION}/canboat-linux-${CB_ARCH}-${CANBOAT_VERSION}.tar.gz"; \
+    echo "${CB_SHA256}  /tmp/canboat.tgz" | sha256sum -c - >/dev/null; \
+    tar xzf /tmp/canboat.tgz -C /opt/canboat; \
+    rm -f /tmp/canboat.tgz; \
+    for b in analyzer actisense-serial candump2analyzer maretron-ipg ikonvert-serial socketcan-serial; do \
+      test -x "/opt/canboat/$b" || { echo "canboat tarball is missing $b" >&2; exit 1; }; \
+      ln -sf "/opt/canboat/$b" "/usr/local/bin/$b"; \
+      command -v "$b" >/dev/null || { echo "$b not on PATH after symlink" >&2; exit 1; }; \
+    done; \
+  fi; \
+  rm -rf /tmp/canboat-rust; \
   analyzer -version >/dev/null || { echo "analyzer present but not executable (arch/glibc mismatch?)" >&2; exit 1; }; \
   command -v candump >/dev/null || { echo "candump missing after can-utils install" >&2; exit 1; }
 

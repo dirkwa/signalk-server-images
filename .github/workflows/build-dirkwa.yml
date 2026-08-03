@@ -22,6 +22,13 @@ env:
   # branch's head SHA feeds the composite state key, so pushing to the
   # branch — or adding/removing one here — triggers a rebuild.
   BRANCHES: "dirkwa/signalk-server:n2k-analyzer-camel-output dirkwa/signalk-server:n2k-native-gateways"
+  # Build canboat from this fork ref (the Rust binary with the --from json
+  # encoder, canboat/canboat PR #800) instead of the release tarball. The
+  # ref's head SHA feeds the composite key, so pushing to it rebuilds.
+  # Revert to CANBOAT_SOURCE: release once #799/#800 land in a release.
+  CANBOAT_SOURCE: "git"
+  CANBOAT_REPO: "dirkwa/canboat-fork"
+  CANBOAT_REF: "dirkwa-stack"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
@@ -32,6 +39,7 @@ jobs:
       master_sha: ${{ steps.shas.outputs.master_sha }}
       prs: ${{ steps.shas.outputs.prs }}
       branches: ${{ steps.shas.outputs.branches }}
+      canboat_desc: ${{ steps.shas.outputs.canboat_desc }}
       changed: ${{ steps.gate.outputs.changed }}
       combined_sha: ${{ steps.stack.outputs.combined_sha }}
       combined_short: ${{ steps.stack.outputs.combined_short }}
@@ -60,6 +68,13 @@ jobs:
             composite="$composite $spec:$br_sha"
             branches="$branches $spec:${br_sha:0:7}"
           done
+          if [ "${{ env.CANBOAT_SOURCE }}" = "git" ]; then
+            cb_sha=$(gh api "repos/${{ env.CANBOAT_REPO }}/commits/${{ env.CANBOAT_REF }}" --jq .sha)
+            composite="$composite canboat:${{ env.CANBOAT_REPO }}:${{ env.CANBOAT_REF }}:$cb_sha"
+            echo "canboat_desc=git:${{ env.CANBOAT_REPO }}@${cb_sha:0:7}" >> "$GITHUB_OUTPUT"
+          else
+            echo "canboat_desc=v8.0.0-beta1" >> "$GITHUB_OUTPUT"
+          fi
           echo "composite=$composite" >> "$GITHUB_OUTPUT"
           echo "master_sha=$MASTER_SHA" >> "$GITHUB_OUTPUT"
           echo "prs=${prs# }" >> "$GITHUB_OUTPUT"
@@ -195,11 +210,14 @@ jobs:
           upstream_sha: ${{ needs.prepare.outputs.combined_sha }}
           strip_packages: "@signalk/instrumentpanel"
           install_canboat: "1"
+          canboat_source: ${{ env.CANBOAT_SOURCE }}
+          canboat_repo: ${{ env.CANBOAT_REPO }}
+          canboat_ref: ${{ env.CANBOAT_REF }}
           extra_labels: |
             io.dirkwa.signalk.prs=${{ needs.prepare.outputs.prs }}
             io.dirkwa.signalk.branches=${{ needs.prepare.outputs.branches }}
             io.dirkwa.signalk.base-sha=${{ needs.prepare.outputs.master_sha }}
-            io.dirkwa.canboat.version=v8.0.0-beta1
+            io.dirkwa.canboat.version=${{ needs.prepare.outputs.canboat_desc }}
 
       - name: Stash digest for the merge job
         run: |

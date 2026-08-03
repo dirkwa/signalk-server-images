@@ -31,7 +31,13 @@ prebuilt C tools (`analyzer` plus the gateway bridges `actisense-serial`,
 `candump2analyzer`, `maretron-ipg`, `ikonvert-serial`, `socketcan-serial`,
 installed to `/opt/canboat` and symlinked into `/usr/local/bin`) plus
 `can-utils`. The bundled canboat version is recorded in the
-`io.dirkwa.canboat.version` image label.
+`io.dirkwa.canboat.version` image label. While canboat PRs
+[#799](https://github.com/canboat/canboat/pull/799) and
+[#800](https://github.com/canboat/canboat/pull/800) are in flight, the image
+instead builds the Rust `canboat` binary from the fork's `dirkwa-stack`
+branch (`CANBOAT_SOURCE=git`): one static binary provides all the gateway
+tools via argv[0] shims plus `canboat convert --from json` — the native
+outbound encoder. The label then reads `git:<repo>@<sha>`.
 
 signalk-server has always shipped a native (non-canboatjs) NMEA 2000 decode
 pipeline; the admin UI only offers it when `analyzer` is found on `PATH`.

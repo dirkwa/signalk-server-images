@@ -53,6 +53,22 @@ inputs:
       Default "0" keeps variants mirroring upstream behaviour.
     required: false
     default: "0"
+  canboat_source:
+    description: >-
+      "release" (default) installs the sha256-pinned prebuilt tools;
+      "git" builds the Rust canboat binary from canboat_repo@canboat_ref
+      instead (argv[0] shims + `canboat convert`). Only meaningful with
+      install_canboat: "1".
+    required: false
+    default: "release"
+  canboat_repo:
+    description: "owner/repo to build canboat from when canboat_source=git."
+    required: false
+    default: "canboat/canboat"
+  canboat_ref:
+    description: "Git ref to build canboat from when canboat_source=git."
+    required: false
+    default: "master"
 
 outputs:
   digest:
@@ -90,6 +106,9 @@ runs:
           SIGNALK_GIT_REF=${{ inputs.git_ref }}
           STRIP_PACKAGES=${{ inputs.strip_packages }}
           INSTALL_CANBOAT=${{ inputs.install_canboat }}
+          CANBOAT_SOURCE=${{ inputs.canboat_source }}
+          CANBOAT_REPO=${{ inputs.canboat_repo }}
+          CANBOAT_REF=${{ inputs.canboat_ref }}
         outputs: type=image,name=${{ inputs.image }},push-by-digest=true,name-canonical=true,push=true
         labels: |
           org.opencontainers.image.source=https://github.com/${{ github.repository }}
