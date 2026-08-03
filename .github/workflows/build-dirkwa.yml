@@ -17,6 +17,11 @@ env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/signalk-server
   UPSTREAM: SignalK/signalk-server
   PRS: "2588 2524 2895 2894 2879 2842 2844"
+  # Branches merged into the stack AFTER the PRs, for changes that have no
+  # upstream PR (yet). Space-separated "owner/repo:branch" specs. Each
+  # branch's head SHA feeds the composite state key, so pushing to the
+  # branch — or adding/removing one here — triggers a rebuild.
+  BRANCHES: "dirkwa/signalk-server:n2k-analyzer-camel-output"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
@@ -26,6 +31,7 @@ jobs:
       composite: ${{ steps.shas.outputs.composite }}
       master_sha: ${{ steps.shas.outputs.master_sha }}
       prs: ${{ steps.shas.outputs.prs }}
+      branches: ${{ steps.shas.outputs.branches }}
       changed: ${{ steps.gate.outputs.changed }}
       combined_sha: ${{ steps.stack.outputs.combined_sha }}
       combined_short: ${{ steps.stack.outputs.combined_short }}
@@ -47,9 +53,17 @@ jobs:
             composite="$composite pr$pr:$pr_sha"
             prs="$prs $pr:${pr_sha:0:7}"
           done
+          branches=""
+          for spec in ${{ env.BRANCHES }}; do
+            repo=${spec%%:*}; branch=${spec#*:}
+            br_sha=$(gh api "repos/$repo/commits/$branch" --jq .sha)
+            composite="$composite $spec:$br_sha"
+            branches="$branches $spec:${br_sha:0:7}"
+          done
           echo "composite=$composite" >> "$GITHUB_OUTPUT"
           echo "master_sha=$MASTER_SHA" >> "$GITHUB_OUTPUT"
           echo "prs=${prs# }" >> "$GITHUB_OUTPUT"
+          echo "branches=${branches# }" >> "$GITHUB_OUTPUT"
           echo "Composite key: $composite"
 
       - name: Compare to last-built state
@@ -88,6 +102,33 @@ jobs:
             git fetch origin "pull/$pr/head:pr-$pr"
             if ! git merge --no-ff --no-edit -m "Merge SignalK/signalk-server#$pr ($head_sha)" "pr-$pr"; then
               echo "::error::PR #$pr conflicts with the current stack on master."
+              git merge --abort || true
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
+
+          # Merge the exact SHAs the state key was computed from, not the
+          # mutable branch names: a push landing between the resolve step and
+          # here would otherwise bake a commit into the image that neither
+          # the state file nor the io.dirkwa.signalk.branches label records.
+          composite="${{ steps.shas.outputs.composite }}"
+          for spec in ${{ env.BRANCHES }}; do
+            repo=${spec%%:*}; branch=${spec#*:}
+            echo "::group::Merging $spec"
+            head_sha=$(printf '%s\n' $composite | sed -n "s|^$spec:||p")
+            if [ -z "$head_sha" ]; then
+              echo "::error::$spec missing from the composite key." ; exit 1
+            fi
+            local_ref="branch-$(printf '%s' "$spec" | tr '/:' '--')"
+            git fetch "https://github.com/$repo.git" "$branch:$local_ref"
+            if ! git merge-base --is-ancestor "$head_sha" "$local_ref" 2>/dev/null \
+               && [ "$(git rev-parse "$local_ref")" != "$head_sha" ]; then
+              echo "::error::$spec no longer contains resolved head $head_sha (rewritten?)."
+              exit 1
+            fi
+            if ! git merge --no-ff --no-edit -m "Merge $spec ($head_sha)" "$head_sha"; then
+              echo "::error::Branch $spec conflicts with the current stack on master."
               git merge --abort || true
               exit 1
             fi
@@ -153,9 +194,12 @@ jobs:
           image: ${{ env.IMAGE }}
           upstream_sha: ${{ needs.prepare.outputs.combined_sha }}
           strip_packages: "@signalk/instrumentpanel"
+          install_canboat: "1"
           extra_labels: |
             io.dirkwa.signalk.prs=${{ needs.prepare.outputs.prs }}
+            io.dirkwa.signalk.branches=${{ needs.prepare.outputs.branches }}
             io.dirkwa.signalk.base-sha=${{ needs.prepare.outputs.master_sha }}
+            io.dirkwa.canboat.version=v8.0.0-beta1
 
       - name: Stash digest for the merge job
         run: |
