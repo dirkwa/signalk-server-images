@@ -24,6 +24,33 @@ Registry: `ghcr.io/dirkwa/signalk-server`
 
 Each workflow only builds and pushes when the resolved upstream version (or commit SHA) differs from what's in `state/`. Re-runs against unchanged upstream are no-ops.
 
+### Native canboat N2K decoding (`:dirkwa` only)
+
+The `:dirkwa` image additionally bundles [canboat](https://github.com/canboat/canboat)'s
+prebuilt C tools (`analyzer`, `actisense-serial`, `candump2analyzer`, installed
+to `/opt/canboat` with the three binaries symlinked into `/usr/local/bin`) plus
+`can-utils`. The bundled canboat version is recorded in the
+`io.dirkwa.canboat.version` image label.
+
+signalk-server has always shipped a native (non-canboatjs) NMEA 2000 decode
+pipeline; the admin UI only offers it when `analyzer` is found on `PATH`.
+With these tools present, the connection editor's "Actisense NGT-1 (canboat
+analyzer)" and native `canbus` options become selectable. Notes:
+
+- **canboatjs remains the default.** Nothing changes unless you explicitly
+  pick a non-canboatjs connection type.
+- **Outbound PGN encoding always goes through canboatjs**, even on a native
+  connection — plugins that transmit are unaffected either way.
+- Only NGT-1 and SocketCAN (`canbus`) have native options in the UI. YDWG,
+  iKonvert, NavLink2, W2K-1 and Maretron IPG remain canboatjs-only.
+- To switch back, change the connection type back to the canboatjs variant in
+  the connection editor. Do this **before** downgrading to an image without
+  the tools — on such an image a native-configured connection fails with an
+  error (it does not silently mis-decode).
+
+`scripts/canboat-parity.sh` (dev tool) decodes the canboatjs test corpus
+through both paths and reports field-level differences.
+
 ## Quick start
 
 ```bash
