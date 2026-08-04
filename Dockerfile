@@ -52,7 +52,14 @@ RUN set -eux; \
     exit 0; \
   fi; \
   apt-get update && apt-get -y install --no-install-recommends git ca-certificates && rm -rf /var/lib/apt/lists/*; \
-  git clone --depth 1 --branch "$CANBOAT_REF" "https://github.com/$CANBOAT_REPO.git" /src; \
+  # Fetch-by-ref rather than clone --branch so CANBOAT_REF can be a commit
+  # SHA. The workflow passes the RESOLVED head SHA, not the branch name —
+  # a branch-name arg is identical across builds, so BuildKit would reuse
+  # this layer from cache and silently ship a stale binary after the
+  # branch moves.
+  mkdir /src && cd /src && git init -q && git remote add origin "https://github.com/$CANBOAT_REPO.git"; \
+  git fetch -q --depth 1 origin "$CANBOAT_REF" && git checkout -q FETCH_HEAD; \
+  cd /; \
   target="$(uname -m)-unknown-linux-musl"; \
   rustup target add "$target"; \
   cargo build --release --manifest-path /src/Cargo.toml -p canboat --target "$target"; \
