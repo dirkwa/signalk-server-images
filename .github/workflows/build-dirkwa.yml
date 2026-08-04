@@ -21,7 +21,7 @@ env:
   # upstream PR (yet). Space-separated "owner/repo:branch" specs. Each
   # branch's head SHA feeds the composite state key, so pushing to the
   # branch — or adding/removing one here — triggers a rebuild.
-  BRANCHES: "dirkwa/signalk-server:n2k-analyzer-camel-output dirkwa/signalk-server:n2k-native-gateways dirkwa/signalk-server:n2k-native-json-tx"
+  BRANCHES: "dirkwa/signalk-server:n2k-analyzer-camel-output dirkwa/signalk-server:n2k-native-gateways dirkwa/signalk-server:n2k-native-json-tx dirkwa/signalk-server:n2k-discovery-typed-emits"
   # Build canboat from this fork ref (the Rust binary with the --from json
   # encoder, canboat/canboat PR #800) instead of the release tarball. The
   # ref's head SHA feeds the composite key, so pushing to it rebuilds.
