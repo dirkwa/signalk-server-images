@@ -30,6 +30,15 @@ env:
   CANBOAT_SOURCE: "git"
   CANBOAT_REPO: "canboat/canboat"
   CANBOAT_REF: "master"
+  # Unreleased @signalk/n2k-signalk to bake into the image (SignalK/
+  # n2k-signalk#339: canName packed directly from the claim fields, no
+  # canboatjs at runtime). The tarball is pre-built on the runner and
+  # staged as signalk-src/extra-packages/ for the Dockerfile — see the
+  # extra-packages note there for why not a git: override. The ref's
+  # head SHA feeds the composite key. Empty N2K_SIGNALK_REPO disables
+  # the override (do that when the PR is merged and released).
+  N2K_SIGNALK_REPO: "dirkwa/n2k-signalk"
+  N2K_SIGNALK_REF: "canname-direct-packing"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
@@ -42,6 +51,7 @@ jobs:
       branches: ${{ steps.shas.outputs.branches }}
       canboat_desc: ${{ steps.shas.outputs.canboat_desc }}
       canboat_sha: ${{ steps.shas.outputs.canboat_sha }}
+      n2k_desc: ${{ steps.shas.outputs.n2k_desc }}
       changed: ${{ steps.gate.outputs.changed }}
       combined_sha: ${{ steps.stack.outputs.combined_sha }}
       combined_short: ${{ steps.stack.outputs.combined_short }}
@@ -70,6 +80,15 @@ jobs:
             composite="$composite $spec:$br_sha"
             branches="$branches $spec:${br_sha:0:7}"
           done
+          if [ -n "${{ env.N2K_SIGNALK_REPO }}" ]; then
+            n2k_sha=$(gh api "repos/${{ env.N2K_SIGNALK_REPO }}/commits/${{ env.N2K_SIGNALK_REF }}" --jq .sha)
+            composite="$composite n2k-signalk:${{ env.N2K_SIGNALK_REPO }}:${{ env.N2K_SIGNALK_REF }}:$n2k_sha"
+            echo "n2k_desc=git:${{ env.N2K_SIGNALK_REPO }}@${n2k_sha:0:7}" >> "$GITHUB_OUTPUT"
+            echo "n2k_sha=$n2k_sha" >> "$GITHUB_OUTPUT"
+          else
+            echo "n2k_desc=" >> "$GITHUB_OUTPUT"
+            echo "n2k_sha=" >> "$GITHUB_OUTPUT"
+          fi
           if [ "${{ env.CANBOAT_SOURCE }}" = "git" ]; then
             cb_sha=$(gh api "repos/${{ env.CANBOAT_REPO }}/commits/${{ env.CANBOAT_REF }}" --jq .sha)
             composite="$composite canboat:${{ env.CANBOAT_REPO }}:${{ env.CANBOAT_REF }}:$cb_sha"
@@ -174,6 +193,26 @@ jobs:
           # later doesn't hash a giant pack file.
           rm -rf .git
 
+      - name: Pack unreleased n2k-signalk into extra-packages
+        if: steps.gate.outputs.changed == 'true' && steps.shas.outputs.n2k_sha != ''
+        run: |
+          set -euo pipefail
+          # Build the tarball here, where lifecycle scripts run: npm pack
+          # triggers prepublishOnly (tsc build), so the tarball ships a
+          # ready dist/ and installs cleanly under the image's
+          # allow-scripts gate. Fetch the resolved SHA, not the branch
+          # name — same staleness rule as the canboat build arg.
+          rm -rf n2k-src
+          git init -q n2k-src
+          cd n2k-src
+          git fetch -q --depth=1 "https://github.com/${{ env.N2K_SIGNALK_REPO }}.git" "${{ steps.shas.outputs.n2k_sha }}"
+          git checkout -q FETCH_HEAD
+          npm install
+          npm pack
+          mkdir -p ../signalk-src/extra-packages
+          mv ./*.tgz ../signalk-src/extra-packages/
+          ls -la ../signalk-src/extra-packages/
+
       - name: Upload prepared source as artifact
         if: steps.gate.outputs.changed == 'true'
         uses: actions/upload-artifact@v7
@@ -225,6 +264,7 @@ jobs:
             io.dirkwa.signalk.branches=${{ needs.prepare.outputs.branches }}
             io.dirkwa.signalk.base-sha=${{ needs.prepare.outputs.master_sha }}
             io.dirkwa.canboat.version=${{ needs.prepare.outputs.canboat_desc }}
+            io.dirkwa.n2k-signalk.version=${{ needs.prepare.outputs.n2k_desc }}
 
       - name: Stash digest for the merge job
         run: |

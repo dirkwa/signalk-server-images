@@ -271,6 +271,15 @@ RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,sharing=locked \
     rm -f signalk-typedoc-signalk-theme-*.tgz; \
     mkdir -p /tmp/skpack; \
     mv ./*.tgz /tmp/skpack/; \
+    # extra-packages/: pre-built dependency tarballs the workflow stages \
+    # next to the checkout (e.g. an unreleased @signalk/n2k-signalk from a \
+    # PR branch). Installed in the same npm invocation as the workspace \
+    # tarballs so one resolution pass dedups them into the tree; pre-built \
+    # on the runner because a git: override would need the dependency's \
+    # prepare script, which the npm >=12 allow-scripts gate silently skips. \
+    if [ -d "$1/extra-packages" ]; then \
+      mv "$1"/extra-packages/*.tgz /tmp/skpack/; \
+    fi; \
     cd /home/node/signalk; \
     rm -rf "$1"; \
     npm install /tmp/skpack/*.tgz; \
