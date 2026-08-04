@@ -22,13 +22,14 @@ env:
   # branch's head SHA feeds the composite state key, so pushing to the
   # branch — or adding/removing one here — triggers a rebuild.
   BRANCHES: "dirkwa/signalk-server:n2k-analyzer-camel-output dirkwa/signalk-server:n2k-native-gateways dirkwa/signalk-server:n2k-native-json-tx dirkwa/signalk-server:n2k-discovery-typed-emits"
-  # Build canboat from this fork ref (the Rust binary with the --from json
-  # encoder, canboat/canboat PR #800) instead of the release tarball. The
-  # ref's head SHA feeds the composite key, so pushing to it rebuilds.
-  # Revert to CANBOAT_SOURCE: release once #799/#800 land in a release.
+  # Build the Rust canboat binary from upstream master: every dirkwa
+  # canboat PR (#799 #800 #801 #807) is merged there, but no release tag
+  # ships the binary yet. The ref's head SHA feeds the composite key, so
+  # upstream commits rebuild. Switch CANBOAT_SOURCE to "release" (and
+  # update the pinned sha256s) once a release with the binary exists.
   CANBOAT_SOURCE: "git"
-  CANBOAT_REPO: "dirkwa/canboat-fork"
-  CANBOAT_REF: "dirkwa-stack"
+  CANBOAT_REPO: "canboat/canboat"
+  CANBOAT_REF: "master"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
