@@ -47,7 +47,7 @@ env:
   # head SHA feeds the composite key. Empty N2K_SIGNALK_REPO disables
   # the override (do that when the PR is merged and released).
   N2K_SIGNALK_REPO: "dirkwa/n2k-signalk"
-  N2K_SIGNALK_REF: "canname-direct-packing"
+  N2K_SIGNALK_REF: "dirkwa-staging"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:

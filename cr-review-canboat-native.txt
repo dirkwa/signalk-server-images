@@ -1,0 +1,170 @@
+Notice: Detected claude environment. Use `coderabbit review --agent` for structured agent-friendly output.
+Connecting to CodeRabbit... 0s elapsed
+Preparing review... 4s elapsed
+────────────────────────────────────────
+CodeRabbit Review
+
+Diff      : committed changes only
+Compare   : main → origin/main (local main differs, using origin/main)
+Directory : signalk-server-images
+────────────────────────────────────────
+
+(\(\
+(• .•)  Ultimately, we're all just debugging someone else's code.
+
+Preparing sandbox... 4s elapsed
+Summarizing changes... 20s elapsed
+Finishing analysis tools... 51s elapsed
+Writing review comments... 51s elapsed
+Writing review comments... 1m 00s elapsed - still working
+
+────────────────────────────────────────────────────────────────────────
+  major [Functional Correctness]
+  → ]8;;vscode://file//home/dirk/dev/signalk-server-images/scripts/canboat-parity-compare.cjs:75scripts/canboat-parity-compare.cjs:75-94]8;;
+
+  Detect analyzer spawn failures instead of reporting them as decode gaps.
+
+  spawnSync sets res.error when the analyzer binary is missing or when
+  the 30s timeout kills it. In that case res.stdout is null, decoded
+  stays empty, and the main loop records analyzer_undecoded for every
+  entry. The image installs analyzer only when INSTALL_CANBOAT=1, so
+  running this script against a non-canboat image produces a report that
+  looks like total divergence. Fail fast on a missing binary, and mark
+  timeouts distinctly.
+
+
+
+
+
+
+  🐛 Proposed fix to surface analyzer failures
+
+   function runAnalyzer(lines) {
+     const res = spawnSync('analyzer', ['-json', '-si', '-camel'], {
+       input: lines.join('\n') + '\n',
+       encoding: 'utf8',
+       timeout: 30000
+     })
+  +  if (res.error) {
+  +    if (res.error.code === 'ENOENT') {
+  +      console.error('canboat-parity: `analyzer` not found — build the image with INSTALL_CANBOAT=1')
+  +      process.exit(3)
+  +    }
+  +    throw res.error
+  +  }
+  +  if (res.signal) {
+  +    console.error(`canboat-parity: analyzer killed by ${res.signal} (timeout?)`)
+  +  }
+     const decoded = []
+
+
+────────────────────────────────────────────────────────────────────────
+  major [Security & Privacy]
+  → ]8;;vscode://file//home/dirk/dev/signalk-server-images/Dockerfile:118Dockerfile:118-127]8;;
+
+  Pin and verify each canboat release archive.
+
+  The build extracts and executes a GitHub release asset selected by
+  CANBOAT_VERSION without a fixed integrity check. Restrict supported
+  versions or commit a SHA-256 digest for each supported version and
+  architecture. Verify the archive before extraction. Do not fetch digests
+  during the build.
+
+Writing review comments... 3m 13s elapsed - still working - 2 findings so far
+Writing review comments... 4m 13s elapsed - still working - 2 findings so far
+Writing review comments... 5m 13s elapsed - still working - 2 findings so far
+
+────────────────────────────────────────────────────────────────────────
+  major [Stability & Availability]
+  → ]8;;vscode://file//home/dirk/dev/signalk-server-images/.github/workflows/build-dirkwa.yml:111.github/workflows/build-dirkwa.yml:111-116]8;;
+
+  Use a unique fetch destination for each external branch.
+
+  When BRANCHES contains the same branch name for divergent repositories,
+  line 115 targets the same local ref (branch-$branch). The second fetch
+  fails with a non-fast-forward error before the merge. Fetch into
+  FETCH_HEAD and merge it, or use a repository-specific destination ref.
+
+
+────────────────────────────────────────────────────────────────────────
+  major [Data Integrity & Integration]
+  → ]8;;vscode://file//home/dirk/dev/signalk-server-images/.github/workflows/build-dirkwa.yml:34.github/workflows/build-dirkwa.yml:34]8;;
+
+  Pin source merges to the SHAs resolved by prepare.
+
+  The source-merge step resolves $branch again and fetches the mutable
+  branch name. If the branch moves, the image contains a different commit
+  from the state key and io.dirkwa.signalk.branches label. Export a full
+  repo:branch -> SHA mapping and fetch and merge those exact SHAs. Apply
+  the same pinning to the master and PR heads, which are also resolved
+  again.
+
+Writing review comments... 7m 20s elapsed - still working - 4 findings so far
+Writing review comments... 8m 20s elapsed - still working - 4 findings so far
+
+────────────────────────────────────────────────────────────────────────
+  major [Data Integrity & Integration]
+  → ]8;;vscode://file//home/dirk/dev/signalk-server-images/scripts/canboat-parity.sh:31scripts/canboat-parity.sh:31-34]8;;
+
+  Validate the reusable checkout before skipping the clone.
+
+  If PARITY_WORKDIR is reused, validate that canboatjs is a clean Git
+  checkout at v$CBJS_VERSION. Otherwise, refresh it or fail before running
+  the comparison. The current directory-exists check can silently compare
+  the image with a stale or modified corpus.
+
+
+
+
+
+
+  Proposed validation
+
+  +CORPUS_DIR="$PARITY_WORKDIR/canboatjs"
+  +EXPECTED_TAG="v$CBJS_VERSION"
+  +
+  -if [ ! -d "$PARITY_WORKDIR/canboatjs" ]; then
+  +if [ ! -e "$CORPUS_DIR" ]; then
+     git clone --quiet --depth 1 --branch "v$CBJS_VERSION" \
+  -    https://github.com/canboat/canboatjs.git "$PARITY_WORKDIR/canboatjs" >&2
+  +    https://github.com/canboat/canboatjs.git "$CORPUS_DIR" >&2
+  +elif [ ! -d "$CORPUS_DIR/.git" ] ||
+  +     [ "$(git -C "$CORPUS_DIR" describe --tags --exact-match 2>/dev/null || true)" != "$EXPECTED_TAG" ] ||
+  +     [ -n "$(git -C "$CORPUS_DIR" status --porcelain)" ]; then
+  +  echo "invalid canboatjs checkout: expected clean $EXPECTED_TAG" >&2
+  +  exit 1
+   fi
+
+
+────────────────────────────────────────────────────────────────────────
+  minor [Data Integrity & Integration]
+  → ]8;;vscode://file//home/dirk/dev/signalk-server-images/scripts/canboat-parity.sh:36scripts/canboat-parity.sh:36-39]8;;
+
+  Handle analyzer failures as harness errors.
+
+  The comparator reads process.argv[2], emits the report to stdout, and
+  returns 0 for differences. However, runAnalyzer() ignores
+  spawnSync() errors, non-zero statuses, and timeouts. These failures can
+  produce a successful exit with an invalid report. Check res.error,
+  res.status, and res.signal, and return non-zero for harness failures.
+  The comparator does not write to the corpus mount.
+
+
+────────────────────────────────────────
+Review complete
+6 findings ✔
+
+Major    5
+Minor    1
+
+7 files reviewed:
+- .github/actions/build-and-push-arch/action.yml
+- .github/workflows/build-dirkwa.yml
+- AGENTS.md
+- Dockerfile
+- README.md
+- scripts/canboat-parity-compare.cjs
+- scripts/canboat-parity.sh
+────────────────────────────────────────
+
+Print all AI prompts: coderabbit review --show-prompts
