@@ -4,3 +4,4 @@ signalk-data/
 # Local builds populate signalk-src/ but only .keep should be tracked.
 signalk-src/*
 !signalk-src/.keep
+cr-review-*.txt
