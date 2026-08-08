@@ -21,7 +21,11 @@ env:
   # upstream PR (yet). Space-separated "owner/repo:branch" specs. Each
   # branch's head SHA feeds the composite state key, so pushing to the
   # branch — or adding/removing one here — triggers a rebuild.
-  BRANCHES: "dirkwa/signalk-server:n2k-wasm-integration"
+  # skip-webapp-swap carries upstream PR #2931 (KIP -> Skip webapp) plus a
+  # pre-merge of #2588, whose optionalDependencies additions sit on the lines
+  # #2931 removes. Merging the PR directly would conflict; this branch has the
+  # resolution baked in, so it stacks cleanly here. Drop it once #2931 merges.
+  BRANCHES: "dirkwa/signalk-server:n2k-wasm-integration dirkwa/signalk-server:skip-webapp-swap"
   # Build the Rust canboat binary from upstream master: every dirkwa
   # canboat PR (#799 #800 #801 #807) is merged there, but no release tag
   # ships the binary yet. The ref's head SHA feeds the composite key, so
