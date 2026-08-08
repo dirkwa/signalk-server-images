@@ -256,8 +256,14 @@ COPY --chown=node:node ./signalk-src/ /tmp/signalk-src/
 # git path: clone master/branch, build:all, pack workspaces + root.
 # local path: same as git but uses the pre-staged /tmp/signalk-src instead of
 #   cloning. Lets the workflow merge PR branches before building.
-# After install, relocate @signalk/* and @mxtommy/kip into the nested
-# node_modules/signalk-server/node_modules/ tree the admin UI expects.
+# After install, relocate @signalk/* and the bundled webapp scopes (@mxtommy
+# for KIP, @halos-org for its successor Skip) into the nested
+# node_modules/signalk-server/node_modules/ tree the admin UI expects. Whole
+# scopes move, not single packages: Skip depends on @halos-org/skip-freeboard-
+# panel, which npm hoists alongside it, so copying only the webapp and then
+# removing the scope would delete the sibling. Both scopes are handled because
+# :latest/:beta/:master track upstream (still KIP) while :dirkwa may carry the
+# Skip swap as a merged PR.
 # STRIP_PACKAGES removal happens at the end of the SAME RUN so the deleted
 # bytes never persist in any layer (a later RUN would only mask them).
 RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,sharing=locked \
@@ -317,11 +323,13 @@ RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,sharing=locked \
     cp -rf node_modules/@signalk/* node_modules/signalk-server/node_modules/@signalk/; \
     rm -rf node_modules/@signalk/; \
   fi; \
-  mkdir -p node_modules/signalk-server/node_modules/@mxtommy/; \
-  if [ -d node_modules/@mxtommy/kip ]; then \
-    cp -rf node_modules/@mxtommy/kip node_modules/signalk-server/node_modules/@mxtommy/; \
-    rm -rf node_modules/@mxtommy/; \
-  fi; \
+  for scope in @mxtommy @halos-org; do \
+    if [ -d "node_modules/$scope" ]; then \
+      mkdir -p "node_modules/signalk-server/node_modules/$scope/"; \
+      cp -rf "node_modules/$scope"/* "node_modules/signalk-server/node_modules/$scope/"; \
+      rm -rf "node_modules/$scope"; \
+    fi; \
+  done; \
   for p in $STRIP_PACKAGES; do \
     echo "Stripping $p"; \
     rm -rf "node_modules/$p" "node_modules/signalk-server/node_modules/$p"; \
