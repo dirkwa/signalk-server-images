@@ -120,6 +120,27 @@ volumes:
 
 This is also the more reliable setup: a container-private bluez stack can't actually drive host Bluetooth radio without privileged hardware access anyway, and most BLE plugins are designed to work against the host D-Bus.
 
+## Node-RED with a remote Victron GX device
+
+Node-RED is **not** part of this image. `@signalk/signalk-node-red` is an app store plugin, and the Victron nodes (`node-red-contrib-victron`) are installed from within Node-RED via *Manage palette*. No image update ships or updates either of them.
+
+To let those nodes reach a GX device (Cerbo/Venus) that is **not** the machine running SignalK, enable "Insecure D-Bus over TCP" on the GX device (`Settings -> Services`, or `/Settings/Services/InsecureDbusOverTcp = 1`), **reboot the GX device**, and set:
+
+```yaml
+environment:
+  - NODE_RED_DBUS_ADDRESS=192.168.1.4:78
+```
+
+As the name says, "Insecure D-Bus over TCP" is **unauthenticated and unencrypted**: anyone who can reach port 78 gets full read/write control of the GX device. Only enable it on a trusted network, firewall the port to the SignalK host, and never expose it to the Internet. Use a VPN for remote access.
+
+Three things that reliably go wrong:
+
+- **The `-e` prefix.** With `docker run` the flag is `-e NODE_RED_DBUS_ADDRESS=192.168.1.4:78`. In compose, the leading `-` is YAML list syntax and the `-e` must be dropped. Carrying it over creates a variable literally named `-e NODE_RED_DBUS_ADDRESS`, which is silently ignored.
+- **The address syntax.** Plain `host:port`. The `tcp:host=192.168.1.4,port=78` form is what `signalk-venus-plugin` wants; the Node-RED nodes reject it. When the value does not parse, the virtual-device node falls back to the *local* system bus and logs `org.freedesktop.DBus.Error.ServiceUnknown` in a retry loop, plus `The name com.victronenergy.settings was not provided by any .service files`.
+- **Setting `DBUS_SYSTEM_BUS_ADDRESS` instead.** That redirects the whole server rather than just the Victron nodes, and has been seen to break the core with `.dbus-keyrings` errors. Use `NODE_RED_DBUS_ADDRESS`, which only the Victron nodes read.
+
+Verify the value actually reached the container with `docker exec <container> printenv NODE_RED_DBUS_ADDRESS`. Changing it requires recreating the container, not just restarting it.
+
 ## Container-orchestration plugins
 
 To let plugins talk to the host runtime, mount the appropriate socket at `/var/run/docker.sock`:

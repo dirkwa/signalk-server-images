@@ -15,6 +15,27 @@ services:
     devices:
       - /dev:/dev
 
+    # environment:
+    #   # Optional: Node-RED Victron nodes (node-red-contrib-victron) talking to a
+    #   # REMOTE GX device (Cerbo/Venus) over Insecure D-Bus/TCP. Plain host:port,
+    #   # no tcp:host= prefix. Requires /Settings/Services/InsecureDbusOverTcp = 1
+    #   # on the GX device, followed by a reboot of that device.
+    #   #
+    #   # WARNING: Insecure D-Bus over TCP is unauthenticated and unencrypted.
+    #   # Anyone who can reach port 78 gets full control of the GX device. Use it
+    #   # only on a trusted network, firewall port 78 to this host, and never
+    #   # expose it to the Internet -- use a VPN for remote access.
+    #   #
+    #   # Note this is the compose form. The equivalent docker run flag is
+    #   #   -e NODE_RED_DBUS_ADDRESS=192.168.1.4:78
+    #   # The -e belongs to docker run only -- do not carry it into the list below,
+    #   # or the variable ends up literally named "-e NODE_RED_DBUS_ADDRESS" and is
+    #   # silently ignored.
+    #   - NODE_RED_DBUS_ADDRESS=192.168.1.4:78
+    #
+    #   # Do NOT set DBUS_SYSTEM_BUS_ADDRESS globally: it points the whole server
+    #   # at one bus, and has been seen to break the core with .dbus-keyrings errors.
+
     volumes:
       - ./signalk-data:/home/node/.signalk
 
