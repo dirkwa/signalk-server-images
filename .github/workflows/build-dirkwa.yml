@@ -16,7 +16,7 @@ concurrency:
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/signalk-server
   UPSTREAM: SignalK/signalk-server
-  PRS: "2524 2895 2842 2844 2908 2909 2910 2911 2952"
+  PRS: "2524 2895 2842 2844 2908 2909 2910 2911"
   # Branches merged into the stack AFTER the PRs, for changes that have no
   # upstream PR (yet). Space-separated "owner/repo:branch" specs. Each
   # branch's head SHA feeds the composite state key, so pushing to the
