@@ -178,9 +178,12 @@ research; and provide professional services to others who use them under these
 terms.
 
 **You may not**: redistribute modified versions or derivative works of the
-build scripts or images, or publish them to a registry or elsewhere. Unmodified
-official images and releases may be mirrored, cached and redistributed verbatim
-as long as the notices stay intact and the license terms are included.
+build scripts or images, or publish them to a registry or elsewhere. The images
+this repository's workflows publish to `ghcr.io/dirkwa/` are the releases
+published by the licensor ("unofficial" above only means "not from the Signal K
+project"); unmodified copies of them may be mirrored, cached and redistributed
+verbatim as long as the notices stay intact and a copy of or link to the
+license terms is included.
 
 The software inside the images keeps its own license: signalk-server is
 Apache-2.0 (see upstream), and Ubuntu, Node.js, canboat, podman and the other
