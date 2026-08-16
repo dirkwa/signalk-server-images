@@ -4,6 +4,12 @@ on:
   schedule:
     - cron: "45 */3 * * *"
   workflow_dispatch:
+    inputs:
+      force:
+        description: "Rebuild even if the PR stack is unchanged (e.g. Dockerfile-only changes)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -149,11 +155,11 @@ jobs:
           set -euo pipefail
           LAST=$(cat state/last-dirkwa.txt 2>/dev/null || echo "")
           NEW="${{ steps.shas.outputs.composite }}"
-          if [ "$LAST" = "$NEW" ]; then
+          if [ "$LAST" = "$NEW" ] && [ "${{ inputs.force }}" != "true" ]; then
             echo "No change. Skipping build."
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
-            echo "Stack changed."
+            [ "$LAST" = "$NEW" ] && echo "Stack unchanged, but force=true." || echo "Stack changed."
             echo "  was: $LAST"
             echo "  new: $NEW"
             echo "changed=true" >> "$GITHUB_OUTPUT"
