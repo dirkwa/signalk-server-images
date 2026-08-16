@@ -337,6 +337,10 @@ RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,sharing=locked \
 
 COPY --chown=node:node --chmod=755 startup.sh /home/node/signalk/startup.sh
 
+# Ship the license terms inside the image: LICENSE.md requires that copies
+# of official releases carry these notices.
+COPY LICENSE.md /usr/share/doc/signalk-server-images/LICENSE.md
+
 # -----------------------------------------------------------------------------
 # Final image
 # -----------------------------------------------------------------------------

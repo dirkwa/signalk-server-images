@@ -167,5 +167,29 @@ Both `podman` and `docker` CLIs are present inside the image, so plugins can use
 
 ## License
 
-This repo's build scripts: see [LICENSE](LICENSE).
-SignalK server itself: Apache-2.0 (see upstream).
+The contents of this repository — the Dockerfile, `startup.sh`, `scripts/`,
+workflows and the way the images are assembled — are **source available, not
+open source**. See [LICENSE.md](LICENSE.md).
+
+**You may**, free of charge: run the images and build scripts on your own boat
+or fleet, private or commercial; use them for internal company operations;
+modify them for your own use; use them in non-commercial education and
+research; and provide professional services to others who use them under these
+terms.
+
+**You may not**: redistribute modified versions or derivative works of the
+build scripts or images, or publish them to a registry or elsewhere. The images
+this repository's workflows publish to `ghcr.io/dirkwa/` are the releases
+published by the licensor ("unofficial" above only means "not from the Signal K
+project"); unmodified copies of them may be mirrored, cached and redistributed
+verbatim as long as the notices stay intact and a copy of or link to the
+license terms is included.
+
+The software inside the images keeps its own license: signalk-server is
+Apache-2.0 (see upstream), and Ubuntu, Node.js, canboat, podman and the other
+packages carry theirs. Nothing here changes those. A copy of LICENSE.md is
+shipped inside every image at `/usr/share/doc/signalk-server-images/`.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md).
