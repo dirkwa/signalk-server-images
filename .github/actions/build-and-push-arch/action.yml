@@ -116,5 +116,6 @@ runs:
           org.opencontainers.image.revision=${{ inputs.upstream_sha }}
           org.opencontainers.image.created=${{ github.event.repository.updated_at }}
           org.opencontainers.image.title=signalk-server
+          org.opencontainers.image.licenses=LicenseRef-Source-Available-No-Redistribution
           org.opencontainers.image.description=Unofficial SignalK server Docker image (Ubuntu 26.04 + Node 24 + podman/docker-cli)
           ${{ inputs.extra_labels }}
