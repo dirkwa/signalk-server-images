@@ -330,8 +330,9 @@ RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,sharing=locked \
   # gate above needs no entry for it. \
   if [ -n "$CANBOAT_WASM_VERSION" ]; then \
     npm install "@canboat/wasm@$CANBOAT_WASM_VERSION"; \
-    node -e "require('@canboat/wasm').FromPgn" || { \
-      echo "@canboat/wasm installed but does not load" >&2; exit 1; \
+    node -e "const m=require('@canboat/wasm'); \
+      if (typeof m.FromPgn !== 'function') throw new Error('no FromPgn export');" || { \
+      echo "@canboat/wasm installed but does not export FromPgn" >&2; exit 1; \
     }; \
   fi; \
   mkdir -p node_modules/signalk-server/node_modules/@signalk/; \
