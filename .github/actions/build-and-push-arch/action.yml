@@ -69,6 +69,12 @@ inputs:
     description: "Git ref to build canboat from when canboat_source=git."
     required: false
     default: "master"
+  canboat_wasm_version:
+    description: >-
+      Published @canboat/wasm version to install into the image (e.g.
+      "8.0.0"). Empty (default) installs nothing.
+    required: false
+    default: ""
 
 outputs:
   digest:
@@ -109,6 +115,7 @@ runs:
           CANBOAT_SOURCE=${{ inputs.canboat_source }}
           CANBOAT_REPO=${{ inputs.canboat_repo }}
           CANBOAT_REF=${{ inputs.canboat_ref }}
+          CANBOAT_WASM_VERSION=${{ inputs.canboat_wasm_version }}
         outputs: type=image,name=${{ inputs.image }},push-by-digest=true,name-canonical=true,push=true
         labels: |
           org.opencontainers.image.source=https://github.com/${{ github.repository }}

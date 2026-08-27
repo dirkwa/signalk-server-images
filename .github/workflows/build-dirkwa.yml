@@ -46,9 +46,11 @@ env:
   CANBOAT_SOURCE: "git"
   CANBOAT_REPO: "canboat/canboat"
   CANBOAT_REF: "master"
-  # @canboat/wasm baked via extra-packages, like N2K_SIGNALK below.
-  CANBOAT_WASM_REPO: "canboat/canboat-wasm"
-  CANBOAT_WASM_REF: "main"
+  # @canboat/wasm from npm. It ships a prebuilt .wasm and has no install
+  # script, so the image just installs the published tarball -- no Rust
+  # toolchain on the runner. Bumping this version moves the composite key
+  # and therefore rebuilds. Empty disables the install.
+  CANBOAT_WASM_VERSION: "8.0.0"
   # Unreleased @signalk/n2k-signalk to bake into the image (SignalK/
   # n2k-signalk#339: canName packed directly from the claim fields, no
   # canboatjs at runtime). The tarball is pre-built on the runner and
@@ -119,14 +121,11 @@ jobs:
             echo "n2k_desc=" >> "$GITHUB_OUTPUT"
             echo "n2k_sha=" >> "$GITHUB_OUTPUT"
           fi
-          if [ -n "${{ env.CANBOAT_WASM_REPO }}" ]; then
-            wasm_sha=$(gh api "repos/${{ env.CANBOAT_WASM_REPO }}/commits/${{ env.CANBOAT_WASM_REF }}" --jq .sha)
-            composite="$composite canboat-wasm:${{ env.CANBOAT_WASM_REPO }}:${{ env.CANBOAT_WASM_REF }}:$wasm_sha"
-            echo "wasm_desc=git:${{ env.CANBOAT_WASM_REPO }}@${wasm_sha:0:7}" >> "$GITHUB_OUTPUT"
-            echo "wasm_sha=$wasm_sha" >> "$GITHUB_OUTPUT"
+          if [ -n "${{ env.CANBOAT_WASM_VERSION }}" ]; then
+            composite="$composite canboat-wasm:npm:${{ env.CANBOAT_WASM_VERSION }}"
+            echo "wasm_desc=npm:${{ env.CANBOAT_WASM_VERSION }}" >> "$GITHUB_OUTPUT"
           else
             echo "wasm_desc=" >> "$GITHUB_OUTPUT"
-            echo "wasm_sha=" >> "$GITHUB_OUTPUT"
           fi
           if [ "${{ env.INSTALL_CANBOAT }}" != "1" ]; then
             echo "canboat_desc=none (wasm in-process)" >> "$GITHUB_OUTPUT"
@@ -255,26 +254,6 @@ jobs:
           mv ./*.tgz ../signalk-src/extra-packages/
           ls -la ../signalk-src/extra-packages/
 
-      - name: Pack @canboat/wasm into extra-packages
-        if: steps.gate.outputs.changed == 'true' && steps.shas.outputs.wasm_sha != ''
-        run: |
-          set -euo pipefail
-          # prepack runs the full build (wasm-pack + tsup), so the
-          # tarball ships ready pkg/ and dist/. Fetch the resolved SHA,
-          # not the branch name — the usual staleness rule.
-          rustup target add wasm32-unknown-unknown
-          npm install -g wasm-pack
-          rm -rf wasm-src
-          git init -q wasm-src
-          cd wasm-src
-          git fetch -q --depth=1 "https://github.com/${{ env.CANBOAT_WASM_REPO }}.git" "${{ steps.shas.outputs.wasm_sha }}"
-          git checkout -q FETCH_HEAD
-          npm install
-          npm pack
-          mkdir -p ../signalk-src/extra-packages
-          mv ./*.tgz ../signalk-src/extra-packages/
-          ls -la ../signalk-src/extra-packages/
-
       - name: Upload prepared source as artifact
         if: steps.gate.outputs.changed == 'true'
         uses: actions/upload-artifact@v7
@@ -321,6 +300,7 @@ jobs:
           canboat_source: ${{ env.CANBOAT_SOURCE }}
           canboat_repo: ${{ env.CANBOAT_REPO }}
           canboat_ref: ${{ needs.prepare.outputs.canboat_sha || env.CANBOAT_REF }}
+          canboat_wasm_version: ${{ env.CANBOAT_WASM_VERSION }}
           extra_labels: |
             io.dirkwa.signalk.prs=${{ needs.prepare.outputs.prs }}
             io.dirkwa.signalk.branches=${{ needs.prepare.outputs.branches }}
