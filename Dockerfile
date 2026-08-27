@@ -227,6 +227,10 @@ ARG SIGNALK_VERSION
 ARG SIGNALK_SOURCE=npm
 ARG SIGNALK_GIT_REF=master
 ARG STRIP_PACKAGES=""
+# Published @canboat/wasm version to install alongside the server (empty
+# installs nothing). The wasm connection types in signalk-server resolve
+# it lazily at runtime -- see the install below.
+ARG CANBOAT_WASM_VERSION=""
 
 USER node
 WORKDIR /home/node/signalk
@@ -318,6 +322,19 @@ RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,sharing=locked \
     echo "canboatjs native canSocket addon missing — npm skipped install scripts (allow-scripts gate)?" >&2; \
     exit 1; \
   }; \
+  # @canboat/wasm: the in-process canboat decoder behind the wasm \
+  # connection types. signalk-server resolves it lazily (require.resolve \
+  # gates /skServer/hasWasm), so it is deliberately a separate install \
+  # rather than a server dependency. The published tarball ships a \
+  # prebuilt .wasm and declares no install script, so the allow-scripts \
+  # gate above needs no entry for it. \
+  if [ -n "$CANBOAT_WASM_VERSION" ]; then \
+    npm install "@canboat/wasm@$CANBOAT_WASM_VERSION"; \
+    node -e "const m=require('@canboat/wasm'); \
+      if (typeof m.FromPgn !== 'function') throw new Error('no FromPgn export');" || { \
+      echo "@canboat/wasm installed but does not export FromPgn" >&2; exit 1; \
+    }; \
+  fi; \
   mkdir -p node_modules/signalk-server/node_modules/@signalk/; \
   if [ -d node_modules/@signalk ]; then \
     cp -rf node_modules/@signalk/* node_modules/signalk-server/node_modules/@signalk/; \
