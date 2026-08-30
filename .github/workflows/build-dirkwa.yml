@@ -48,9 +48,15 @@ env:
   CANBOAT_REF: "master"
   # @canboat/wasm from npm. It ships a prebuilt .wasm and has no install
   # script, so the image just installs the published tarball -- no Rust
-  # toolchain on the runner. Bumping this version moves the composite key
-  # and therefore rebuilds. Empty disables the install.
-  CANBOAT_WASM_VERSION: "8.0.0"
+  # toolchain on the runner. Empty disables the install.
+  #
+  # A semver RANGE, resolved to a concrete version in the prepare job.
+  # The resolved version is what feeds the composite key and the build
+  # arg, so a new canboat-wasm release moves the key on its own and the
+  # next scheduled run rebuilds -- exactly how PRS/BRANCHES track their
+  # upstreams. Putting the range itself in the key would freeze it: the
+  # string never changes, so a new release would never trigger a build.
+  CANBOAT_WASM_RANGE: "^8.0.0"
   # Unreleased @signalk/n2k-signalk to bake into the image (SignalK/
   # n2k-signalk#339: canName packed directly from the claim fields, no
   # canboatjs at runtime). The tarball is pre-built on the runner and
@@ -74,6 +80,7 @@ jobs:
       canboat_sha: ${{ steps.shas.outputs.canboat_sha }}
       n2k_desc: ${{ steps.shas.outputs.n2k_desc }}
       wasm_desc: ${{ steps.shas.outputs.wasm_desc }}
+      wasm_version: ${{ steps.shas.outputs.wasm_version }}
       changed: ${{ steps.gate.outputs.changed }}
       combined_sha: ${{ steps.stack.outputs.combined_sha }}
       combined_short: ${{ steps.stack.outputs.combined_short }}
@@ -121,11 +128,22 @@ jobs:
             echo "n2k_desc=" >> "$GITHUB_OUTPUT"
             echo "n2k_sha=" >> "$GITHUB_OUTPUT"
           fi
-          if [ -n "${{ env.CANBOAT_WASM_VERSION }}" ]; then
-            composite="$composite canboat-wasm:npm:${{ env.CANBOAT_WASM_VERSION }}"
-            echo "wasm_desc=npm:${{ env.CANBOAT_WASM_VERSION }}" >> "$GITHUB_OUTPUT"
+          if [ -n "${{ env.CANBOAT_WASM_RANGE }}" ]; then
+            # Resolve the range to the highest published match. npm view
+            # prints one version for a single match and a JSON array for
+            # several, so normalise and take the last (npm sorts ascending).
+            wasm_version=$(npm view "@canboat/wasm@${{ env.CANBOAT_WASM_RANGE }}" version --json \
+              | jq -r 'if type == "array" then .[-1] else . end')
+            case "$wasm_version" in
+              [0-9]*.[0-9]*.[0-9]*) ;;
+              *) echo "::error::could not resolve @canboat/wasm@${{ env.CANBOAT_WASM_RANGE }} (got '$wasm_version')"; exit 1 ;;
+            esac
+            composite="$composite canboat-wasm:npm:$wasm_version"
+            echo "wasm_desc=npm:$wasm_version" >> "$GITHUB_OUTPUT"
+            echo "wasm_version=$wasm_version" >> "$GITHUB_OUTPUT"
           else
             echo "wasm_desc=" >> "$GITHUB_OUTPUT"
+            echo "wasm_version=" >> "$GITHUB_OUTPUT"
           fi
           if [ "${{ env.INSTALL_CANBOAT }}" != "1" ]; then
             echo "canboat_desc=none (wasm in-process)" >> "$GITHUB_OUTPUT"
@@ -300,7 +318,7 @@ jobs:
           canboat_source: ${{ env.CANBOAT_SOURCE }}
           canboat_repo: ${{ env.CANBOAT_REPO }}
           canboat_ref: ${{ needs.prepare.outputs.canboat_sha || env.CANBOAT_REF }}
-          canboat_wasm_version: ${{ env.CANBOAT_WASM_VERSION }}
+          canboat_wasm_version: ${{ needs.prepare.outputs.wasm_version }}
           extra_labels: |
             io.dirkwa.signalk.prs=${{ needs.prepare.outputs.prs }}
             io.dirkwa.signalk.branches=${{ needs.prepare.outputs.branches }}
