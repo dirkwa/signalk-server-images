@@ -75,6 +75,25 @@ inputs:
       "8.0.0"). Empty (default) installs nothing.
     required: false
     default: ""
+  bundle_plugins:
+    description: >-
+      Space-separated plugin package names staged as pre-built tarballs in
+      signalk-src/extra-packages/ and relocated into the image's nested
+      node_modules/signalk-server/node_modules/ tree. Each is asserted
+      present, so a pack step that staged nothing fails the build. Empty
+      (default) bundles no plugins.
+    required: false
+    default: ""
+  plugins_with_update_disabled:
+    description: >-
+      Comma-separated plugin package names the App Store must not offer
+      updates for (PLUGINS_WITH_UPDATE_DISABLED env in the final image).
+      Intended for plugins bundled from an unreleased branch, where taking
+      a published "update" would install into ~/.signalk/node_modules and
+      silently shadow the bundled copy. Empty (default) keeps upstream
+      behaviour for :latest/:beta/:master.
+    required: false
+    default: ""
 
 outputs:
   digest:
@@ -116,6 +135,8 @@ runs:
           CANBOAT_REPO=${{ inputs.canboat_repo }}
           CANBOAT_REF=${{ inputs.canboat_ref }}
           CANBOAT_WASM_VERSION=${{ inputs.canboat_wasm_version }}
+          PLUGINS_WITH_UPDATE_DISABLED=${{ inputs.plugins_with_update_disabled }}
+          BUNDLE_PLUGINS=${{ inputs.bundle_plugins }}
         outputs: type=image,name=${{ inputs.image }},push-by-digest=true,name-canonical=true,push=true
         labels: |
           org.opencontainers.image.source=https://github.com/${{ github.repository }}

@@ -19,42 +19,63 @@ Registry: `ghcr.io/dirkwa/signalk-server`
 | `vX.Y.Z-beta.N` | Pinned beta release | published alongside `beta` |
 | `master` | HEAD of `SignalK/signalk-server` `master` branch | every 3 h |
 | `master-<sha7>` | Pinned commit on master | published alongside `master` |
-| `dirkwa` | master + a personal stack of upstream PRs (2588, 2702, 2703, 2689) merged in order | every 3 h (+45 min offset) |
+| `dirkwa` | master + a personal stack of upstream PRs and branches, an unreleased `@signalk/n2k-signalk`, `@canboat/wasm`, and a bundled `bt-sensors-plugin-sk` | every 3 h (+45 min offset) |
 | `dirkwa-<sha7>` | Pinned commit on the merged stack | published alongside `dirkwa` |
 
 Each workflow only builds and pushes when the resolved upstream version (or commit SHA) differs from what's in `state/`. Re-runs against unchanged upstream are no-ops.
 
-### Native canboat N2K decoding (`:dirkwa` only)
+### What `:dirkwa` carries beyond master
 
-The `:dirkwa` image additionally bundles [canboat](https://github.com/canboat/canboat)'s
-prebuilt C tools (`analyzer` plus the gateway bridges `actisense-serial`,
-`candump2analyzer`, `maretron-ipg`, `ikonvert-serial`, `socketcan-serial`,
-installed to `/opt/canboat` and symlinked into `/usr/local/bin`) plus
-`can-utils`. The bundled canboat version is recorded in the
-`io.dirkwa.canboat.version` image label. While canboat PRs
-[#799](https://github.com/canboat/canboat/pull/799) and
-[#800](https://github.com/canboat/canboat/pull/800) are in flight, the image
-instead builds the Rust `canboat` binary from the fork's `dirkwa-stack`
-branch (`CANBOAT_SOURCE=git`): one static binary provides all the gateway
-tools via argv[0] shims plus `canboat convert --from json` — the native
-outbound encoder. The label then reads `git:<repo>@<sha>`.
+The exact stack is the `PRS:`, `BRANCHES:`, `N2K_SIGNALK_*` and `BT_SENSORS_*`
+envs in `.github/workflows/build-dirkwa.yml` — that file is the source of
+truth, and each entry's resolved SHA is recorded in the image labels
+(`io.dirkwa.signalk.prs`, `io.dirkwa.signalk.branches`,
+`io.dirkwa.n2k-signalk.version`, `io.dirkwa.bt-sensors.version`,
+`io.dirkwa.canboat-wasm.version`).
 
-signalk-server has always shipped a native (non-canboatjs) NMEA 2000 decode
-pipeline; the admin UI only offers it when `analyzer` is found on `PATH`.
-With these tools present, the connection editor's "Actisense NGT-1 (canboat
-analyzer)" and native `canbus` options become selectable. Notes:
+#### canboat N2K decoding
+
+N2K decoding uses [`@canboat/wasm`](https://www.npmjs.com/package/@canboat/wasm)
+— the same canboat code compiled to WebAssembly, decoding and encoding
+in-process. The version is recorded in the `io.dirkwa.canboat-wasm.version`
+label.
+
+The prebuilt **native** canboat C tools are *not* installed by default
+(`INSTALL_CANBOAT: "0"`): the wasm build covers the same ground without
+shipping binaries, and `canbus` keeps canboatjs's `canSocket` shim as its
+frame mover. Because signalk-server only offers the native connection types
+when `analyzer` is found on `PATH`, those `hasAnalyzer`-gated options do not
+appear in the connection editor. Set `INSTALL_CANBOAT: "1"` in the workflow
+to bring them back.
+
+Notes on decoding behaviour:
 
 - **canboatjs remains the default.** Nothing changes unless you explicitly
   pick a non-canboatjs connection type.
-- **Outbound PGN encoding always goes through canboatjs**, even on a native
+- **Outbound PGN encoding always goes through canboatjs** on a native
   connection — plugins that transmit are unaffected either way.
-- Native options in the UI: NGT-1, SocketCAN (`canbus`, bidirectional via
-  `socketcan-serial`), iKonvert and Maretron IPG100. YDWG, NavLink2 and
-  W2K-1 remain canboatjs-only (canboat has no bridge tools for them).
-- To switch back, change the connection type back to the canboatjs variant in
-  the connection editor. Do this **before** downgrading to an image without
-  the tools — on such an image a native-configured connection fails with an
-  error (it does not silently mis-decode).
+- Downgrading to an image without the tools while a connection is configured
+  for a native type makes that connection fail with an error (it does not
+  silently mis-decode). Switch the connection type back first.
+
+#### Bundled `bt-sensors-plugin-sk`
+
+The image ships [bt-sensors-plugin-sk](https://github.com/naugehyde/bt-sensors-plugin-sk)
+built from `dirkwa/bt-sensors-plugin-sk:ble-gateway-api-support`, which makes
+the plugin follow the server's own BLE settings (use the server's BLE API when
+it manages Bluetooth, hybrid otherwise). Upstream PR
+[#137](https://github.com/naugehyde/bt-sensors-plugin-sk/pull/137) was closed
+unmerged, and no published release carries the change.
+
+It installs as a **bundled** plugin (in the server's own `node_modules`, not
+`~/.signalk`), is enabled by default on a fresh config, and its App Store
+update button is greyed out — taking a published "update" would install into
+`~/.signalk/node_modules`, which takes precedence and would silently revert to
+a build without the BLE-API integration. Installing it there deliberately
+still works, and is the way to move to a real upstream release once one exists.
+
+BLE itself needs the host's Bluetooth stack: the image ships no `bluez`, so
+bind-mount the host `/run/dbus` — see [BLE plugins](#ble-plugins) below.
 
 `scripts/canboat-parity.sh` (dev tool) decodes the canboatjs test corpus
 through both paths and reports field-level differences.

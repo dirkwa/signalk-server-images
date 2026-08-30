@@ -19,6 +19,10 @@
 #                    when INSTALL_CANBOAT=1. Only the v8.0.0 prereleases
 #                    publish Linux binaries — stable tags (<= v7.1.0) ship
 #                    Windows-only.
+#   PLUGINS_WITH_UPDATE_DISABLED
+#                    comma-separated plugin names the App Store must not offer
+#                    updates for. Set only by variants that bundle a plugin
+#                    from an unreleased branch (:dirkwa); see the final stage.
 
 ARG NODE_MAJOR=24
 ARG INSTALL_CANBOAT=0
@@ -231,6 +235,12 @@ ARG STRIP_PACKAGES=""
 # installs nothing). The wasm connection types in signalk-server resolve
 # it lazily at runtime -- see the install below.
 ARG CANBOAT_WASM_VERSION=""
+# Space-separated plugin package names the workflow stages as pre-built
+# tarballs in signalk-src/extra-packages/. Each is MOVED into the nested
+# node_modules/signalk-server/node_modules/ tree after install (see below)
+# and asserted present, so a pack step that quietly produced nothing fails
+# the build instead of shipping an image without the plugin.
+ARG BUNDLE_PLUGINS=""
 
 USER node
 WORKDIR /home/node/signalk
@@ -347,6 +357,27 @@ RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,sharing=locked \
       rm -rf "node_modules/$scope"; \
     fi; \
   done; \
+  # Same move for unscoped BUNDLED PLUGINS staged via extra-packages. npm \
+  # installs them into /home/node/signalk/node_modules/, which the server \
+  # never scans: getModulePaths() looks only in configPath/node_modules \
+  # (~/.signalk) and appPath/node_modules, and appPath is the signalk-server \
+  # PACKAGE root — so the parent node_modules the tarball lands in is not a \
+  # plugin location at all. Move them into the nested tree or startPlugins() \
+  # silently never sees them. \
+  for p in $BUNDLE_PLUGINS; do \
+    if [ -d "node_modules/$p" ]; then \
+      mkdir -p node_modules/signalk-server/node_modules/; \
+      cp -rf "node_modules/$p" node_modules/signalk-server/node_modules/; \
+      rm -rf "node_modules/$p"; \
+    fi; \
+    # Unconditional: the plugin was asked for, so a missing tarball (a pack \
+    # step that failed to stage anything) must fail the build here rather \
+    # than ship an image that silently lacks it. \
+    test -f "node_modules/signalk-server/node_modules/$p/package.json" || { \
+      echo "bundled plugin $p not found in the nested plugin tree" >&2; \
+      exit 1; \
+    }; \
+  done; \
   for p in $STRIP_PACKAGES; do \
     echo "Stripping $p"; \
     rm -rf "node_modules/$p" "node_modules/signalk-server/node_modules/$p"; \
@@ -373,6 +404,16 @@ WORKDIR /home/node/.signalk
 ENV SKIP_ADMINUI_VERSION_CHECK=true \
     IS_IN_DOCKER=true \
     SIGNALK_SERVER_IS_UPDATABLE=true
+
+# Comma-separated plugins the App Store marks as non-updatable. Only set for
+# variants that BUNDLE a plugin from an unreleased branch (:dirkwa): the
+# bundled copy carries upstream's own version string, so a later published
+# release reads as an update, and taking it installs into
+# ~/.signalk/node_modules — which is scanned FIRST and therefore shadows the
+# bundled copy from the next restart on, silently reverting the branch. Empty
+# default keeps :latest/:beta/:master mirroring upstream.
+ARG PLUGINS_WITH_UPDATE_DISABLED=""
+ENV PLUGINS_WITH_UPDATE_DISABLED=${PLUGINS_WITH_UPDATE_DISABLED}
 
 EXPOSE 3000
 

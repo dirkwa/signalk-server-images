@@ -66,6 +66,20 @@ env:
   # the override (do that when the PR is merged and released).
   N2K_SIGNALK_REPO: "dirkwa/n2k-signalk"
   N2K_SIGNALK_REF: "dirkwa-staging"
+  # bt-sensors-plugin-sk from Dirk's fork. Upstream PR #137 (follow the
+  # server's BLE settings: API when the server manages Bluetooth, hybrid
+  # otherwise) was closed unmerged — the maintainer declined the added
+  # complexity and offered a public fork instead, which we do not want. No
+  # published release carries the branch, so the tarball is packed on the
+  # runner and staged as signalk-src/extra-packages/, same as n2k-signalk.
+  # Unlike that one this is a PLUGIN, not a server dependency: the
+  # Dockerfile has to move it into the nested node_modules/signalk-server/
+  # node_modules/ tree, because that (plus ~/.signalk) is all the server
+  # scans. The ref's head SHA feeds the composite key, so pushing to the
+  # branch triggers a rebuild. Empty BT_SENSORS_REPO disables the bundling
+  # (do that once a release carries the change).
+  BT_SENSORS_REPO: "dirkwa/bt-sensors-plugin-sk"
+  BT_SENSORS_REF: "ble-gateway-api-support"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
@@ -79,6 +93,8 @@ jobs:
       canboat_desc: ${{ steps.shas.outputs.canboat_desc }}
       canboat_sha: ${{ steps.shas.outputs.canboat_sha }}
       n2k_desc: ${{ steps.shas.outputs.n2k_desc }}
+      bt_sensors_desc: ${{ steps.shas.outputs.bt_sensors_desc }}
+      bt_sensors_sha: ${{ steps.shas.outputs.bt_sensors_sha }}
       wasm_desc: ${{ steps.shas.outputs.wasm_desc }}
       wasm_version: ${{ steps.shas.outputs.wasm_version }}
       changed: ${{ steps.gate.outputs.changed }}
@@ -127,6 +143,15 @@ jobs:
           else
             echo "n2k_desc=" >> "$GITHUB_OUTPUT"
             echo "n2k_sha=" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -n "${{ env.BT_SENSORS_REPO }}" ]; then
+            bt_sha=$(gh api "repos/${{ env.BT_SENSORS_REPO }}/commits/${{ env.BT_SENSORS_REF }}" --jq .sha)
+            composite="$composite bt-sensors:${{ env.BT_SENSORS_REPO }}:${{ env.BT_SENSORS_REF }}:$bt_sha"
+            echo "bt_sensors_desc=git:${{ env.BT_SENSORS_REPO }}@${bt_sha:0:7}" >> "$GITHUB_OUTPUT"
+            echo "bt_sensors_sha=$bt_sha" >> "$GITHUB_OUTPUT"
+          else
+            echo "bt_sensors_desc=" >> "$GITHUB_OUTPUT"
+            echo "bt_sensors_sha=" >> "$GITHUB_OUTPUT"
           fi
           if [ -n "${{ env.CANBOAT_WASM_RANGE }}" ]; then
             # Resolve the range to the highest published match. npm view
@@ -272,6 +297,32 @@ jobs:
           mv ./*.tgz ../signalk-src/extra-packages/
           ls -la ../signalk-src/extra-packages/
 
+      - name: Pack bt-sensors-plugin-sk into extra-packages
+        if: steps.gate.outputs.changed == 'true' && steps.shas.outputs.bt_sensors_sha != ''
+        run: |
+          set -euo pipefail
+          # Same runner-side pack as n2k-signalk above: the plugin's prepack
+          # runs webpack, so the tarball ships a built public/ bundle and
+          # installs cleanly under the image's allow-scripts gate. Fetch the
+          # resolved SHA, not the branch name — same staleness rule.
+          #
+          # Note the plugin's own "clean" script calls rimraf, which is not in
+          # its devDependencies. It survives only because the script separates
+          # the two calls with ';' rather than '&&', so the "not found" errors
+          # do not propagate and webpack still runs. set -e above means a real
+          # pack failure fails the job here instead of silently staging
+          # nothing — the Dockerfile assertion is the second net.
+          rm -rf bt-src
+          git init -q bt-src
+          cd bt-src
+          git fetch -q --depth=1 "https://github.com/${{ env.BT_SENSORS_REPO }}.git" "${{ steps.shas.outputs.bt_sensors_sha }}"
+          git checkout -q FETCH_HEAD
+          npm install
+          npm pack
+          mkdir -p ../signalk-src/extra-packages
+          mv ./*.tgz ../signalk-src/extra-packages/
+          ls -la ../signalk-src/extra-packages/
+
       - name: Upload prepared source as artifact
         if: steps.gate.outputs.changed == 'true'
         uses: actions/upload-artifact@v7
@@ -319,12 +370,26 @@ jobs:
           canboat_repo: ${{ env.CANBOAT_REPO }}
           canboat_ref: ${{ needs.prepare.outputs.canboat_sha || env.CANBOAT_REF }}
           canboat_wasm_version: ${{ needs.prepare.outputs.wasm_version }}
+          # Relocated into the nested node_modules/signalk-server/node_modules/
+          # tree after install, and asserted present there — the parent
+          # node_modules the tarball lands in is not a plugin location.
+          bundle_plugins: "bt-sensors-plugin-sk"
+          # The bundled copy carries upstream's own version string
+          # (1.3.8-beta11), so any later published release would read as an
+          # "update" in the App Store. Accepting it installs into
+          # ~/.signalk/node_modules, which is scanned first and so shadows the
+          # bundled copy from the next restart on, silently dropping the
+          # BLE-API work. This only greys out the button; a deliberate install
+          # still wins, which is the escape hatch once a real release carries
+          # the change.
+          plugins_with_update_disabled: "bt-sensors-plugin-sk"
           extra_labels: |
             io.dirkwa.signalk.prs=${{ needs.prepare.outputs.prs }}
             io.dirkwa.signalk.branches=${{ needs.prepare.outputs.branches }}
             io.dirkwa.signalk.base-sha=${{ needs.prepare.outputs.master_sha }}
             io.dirkwa.canboat.version=${{ needs.prepare.outputs.canboat_desc }}
             io.dirkwa.n2k-signalk.version=${{ needs.prepare.outputs.n2k_desc }}
+            io.dirkwa.bt-sensors.version=${{ needs.prepare.outputs.bt_sensors_desc }}
             io.dirkwa.canboat-wasm.version=${{ needs.prepare.outputs.wasm_desc }}
 
       - name: Stash digest for the merge job
