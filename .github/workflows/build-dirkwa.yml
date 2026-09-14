@@ -22,7 +22,7 @@ concurrency:
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/signalk-server
   UPSTREAM: SignalK/signalk-server
-  PRS: "2524 2895 2842 2844 2908 2909 2910 2911 2995 3025 3027"
+  PRS: "2524 2895 2842 2844 2908 2909 2910 2911 3041"
   # Branches merged into the stack AFTER the PRs, for changes that have no
   # upstream PR (yet). Space-separated "owner/repo:branch" specs. Each
   # branch's head SHA feeds the composite state key, so pushing to the
@@ -31,12 +31,7 @@ env:
   # pre-merge of #2588, whose optionalDependencies additions sit on the lines
   # #2931 removes. Merging the PR directly would conflict; this branch has the
   # resolution baked in, so it stacks cleanly here. Drop it once #2931 merges.
-  # staleness-3026-3035 carries upstream PRs #3026 and #3035 pre-merged. Both
-  # add tests at the same point in test/staleness.ts and the conflict splits
-  # mid-test, so merging them in sequence fails; the branch has each side
-  # reconstructed as a complete test. Drop it and restore both to PRS: once
-  # either merges upstream.
-  BRANCHES: "dirkwa/signalk-server:n2k-wasm-integration dirkwa/signalk-server:skip-webapp-swap dirkwa/signalk-server:staleness-3026-3035"
+  BRANCHES: "dirkwa/signalk-server:n2k-wasm-integration dirkwa/signalk-server:skip-webapp-swap"
   # Build the Rust canboat binary from upstream master: every dirkwa
   # canboat PR (#799 #800 #801 #807) is merged there, but no release tag
   # ships the binary yet. The ref's head SHA feeds the composite key, so
