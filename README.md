@@ -19,19 +19,18 @@ Registry: `ghcr.io/dirkwa/signalk-server`
 | `vX.Y.Z-beta.N` | Pinned beta release | published alongside `beta` |
 | `master` | HEAD of `SignalK/signalk-server` `master` branch | every 3 h |
 | `master-<sha7>` | Pinned commit on master | published alongside `master` |
-| `dirkwa` | master + a personal stack of upstream PRs and branches, an unreleased `@signalk/n2k-signalk`, `@canboat/wasm`, and a bundled `bt-sensors-plugin-sk` | every 3 h (+45 min offset) |
+| `dirkwa` | master + a personal stack of upstream PRs and branches, an unreleased `@signalk/n2k-signalk`, and `@canboat/wasm` | every 3 h (+45 min offset) |
 | `dirkwa-<sha7>` | Pinned commit on the merged stack | published alongside `dirkwa` |
 
 Each workflow only builds and pushes when the resolved upstream version (or commit SHA) differs from what's in `state/`. Re-runs against unchanged upstream are no-ops.
 
 ### What `:dirkwa` carries beyond master
 
-The exact stack is the `PRS:`, `BRANCHES:`, `N2K_SIGNALK_*` and `BT_SENSORS_*`
+The exact stack is the `PRS:`, `BRANCHES:` and `N2K_SIGNALK_*`
 envs in `.github/workflows/build-dirkwa.yml` — that file is the source of
 truth, and each entry's resolved SHA is recorded in the image labels
 (`io.dirkwa.signalk.prs`, `io.dirkwa.signalk.branches`,
-`io.dirkwa.n2k-signalk.version`, `io.dirkwa.bt-sensors.version`,
-`io.dirkwa.canboat-wasm.version`).
+`io.dirkwa.n2k-signalk.version`, `io.dirkwa.canboat-wasm.version`).
 
 #### canboat N2K decoding
 
@@ -57,25 +56,6 @@ Notes on decoding behaviour:
 - Downgrading to an image without the tools while a connection is configured
   for a native type makes that connection fail with an error (it does not
   silently mis-decode). Switch the connection type back first.
-
-#### Bundled `bt-sensors-plugin-sk`
-
-The image ships [bt-sensors-plugin-sk](https://github.com/naugehyde/bt-sensors-plugin-sk)
-built from `dirkwa/bt-sensors-plugin-sk:ble-gateway-api-support`, which makes
-the plugin follow the server's own BLE settings (use the server's BLE API when
-it manages Bluetooth, hybrid otherwise). Upstream PR
-[#137](https://github.com/naugehyde/bt-sensors-plugin-sk/pull/137) was closed
-unmerged, and no published release carries the change.
-
-It installs as a **bundled** plugin (in the server's own `node_modules`, not
-`~/.signalk`), is enabled by default on a fresh config, and its App Store
-update button is greyed out — taking a published "update" would install into
-`~/.signalk/node_modules`, which takes precedence and would silently revert to
-a build without the BLE-API integration. Installing it there deliberately
-still works, and is the way to move to a real upstream release once one exists.
-
-BLE itself needs the host's Bluetooth stack: the image ships no `bluez`, so
-bind-mount the host `/run/dbus` — see [BLE plugins](#ble-plugins) below.
 
 `scripts/canboat-parity.sh` (dev tool) decodes the canboatjs test corpus
 through both paths and reports field-level differences.
