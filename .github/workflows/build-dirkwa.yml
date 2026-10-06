@@ -22,7 +22,7 @@ concurrency:
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/signalk-server
   UPSTREAM: SignalK/signalk-server
-  PRS: "2524 2895 2842 2844 2908 2909 2910 2911 3041 3124"
+  PRS: "2524 2895 2842 2844 2908 2909 2910 2911 3041 3124 3120"
   # Branches merged into the stack AFTER the PRs, for changes that have no
   # upstream PR (yet). Space-separated "owner/repo:branch" specs. Each
   # branch's head SHA feeds the composite state key, so pushing to the
@@ -66,11 +66,32 @@ env:
   # the override (do that when the PR is merged and released).
   N2K_SIGNALK_REPO: "dirkwa/n2k-signalk"
   N2K_SIGNALK_REF: "dirkwa-staging"
+  # Freeboard-SK built from a branch that combines the open upstream
+  # Freeboard PRs (#904 radar CPA line, #914 sensor targets), installed in
+  # place of the released Freeboard the server depends on. The tarball is
+  # packed on the runner (prepack runs build:all) and staged as
+  # extra-packages/, so npm resolves the server's @signalk/freeboard-sk
+  # dependency to it. The branch head SHA feeds the composite key. Empty
+  # FREEBOARD_REPO falls back to the released Freeboard.
+  FREEBOARD_REPO: "dirkwa/freeboard-sk"
+  FREEBOARD_REF: "feat/collision-targets-combined"
+  # Open plugin PRs bundled into the image, as space-separated
+  # "owner/repo#number" specs. Each PR head is packed on the runner,
+  # moved into the nested plugin tree (BUNDLE_PLUGINS) and has its App
+  # Store update greyed out, so a published release cannot shadow the PR
+  # build. A merged PR is skipped with a warning; install the released
+  # plugin from the App Store then, and drop it from this list.
+  PLUGIN_PRS: "MarineYachtRadar/mayara-server-signalk-plugin#138 dirkwa/signalk-collision-alerts#11 dirkwa/signalk-target-fusion#1"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    # Read-only: this job runs npm install and build scripts from unreleased
+    # branches (n2k-signalk, Freeboard, plugin PRs), so it must not hold a
+    # token that can push to this repo or publish images.
+    permissions:
+      contents: read
     outputs:
       composite: ${{ steps.shas.outputs.composite }}
       master_sha: ${{ steps.shas.outputs.master_sha }}
@@ -79,6 +100,10 @@ jobs:
       canboat_desc: ${{ steps.shas.outputs.canboat_desc }}
       canboat_sha: ${{ steps.shas.outputs.canboat_sha }}
       n2k_desc: ${{ steps.shas.outputs.n2k_desc }}
+      freeboard_desc: ${{ steps.shas.outputs.freeboard_desc }}
+      plugin_prs_desc: ${{ steps.shas.outputs.plugin_prs_desc }}
+      bundle_plugins: ${{ steps.plugins.outputs.bundle_plugins }}
+      plugins_with_update_disabled: ${{ steps.plugins.outputs.plugins_with_update_disabled }}
       wasm_desc: ${{ steps.shas.outputs.wasm_desc }}
       wasm_version: ${{ steps.shas.outputs.wasm_version }}
       changed: ${{ steps.gate.outputs.changed }}
@@ -87,6 +112,8 @@ jobs:
       version: ${{ steps.stack.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Resolve upstream master + PR SHAs
         id: shas
@@ -128,6 +155,30 @@ jobs:
             echo "n2k_desc=" >> "$GITHUB_OUTPUT"
             echo "n2k_sha=" >> "$GITHUB_OUTPUT"
           fi
+          if [ -n "${{ env.FREEBOARD_REPO }}" ]; then
+            fb_sha=$(gh api "repos/${{ env.FREEBOARD_REPO }}/commits/${{ env.FREEBOARD_REF }}" --jq .sha)
+            composite="$composite freeboard:${{ env.FREEBOARD_REPO }}:${{ env.FREEBOARD_REF }}:$fb_sha"
+            echo "freeboard_desc=git:${{ env.FREEBOARD_REPO }}@${fb_sha:0:7}" >> "$GITHUB_OUTPUT"
+            echo "freeboard_sha=$fb_sha" >> "$GITHUB_OUTPUT"
+          else
+            echo "freeboard_desc=" >> "$GITHUB_OUTPUT"
+            echo "freeboard_sha=" >> "$GITHUB_OUTPUT"
+          fi
+          plugin_prs=""
+          plugin_prs_desc=""
+          for spec in ${{ env.PLUGIN_PRS }}; do
+            repo=${spec%%#*}; num=${spec#*#}
+            read -r pl_sha merged <<< "$(gh api "repos/$repo/pulls/$num" --jq '.head.sha + " " + (.merged|tostring)')"
+            if [ "$merged" = "true" ]; then
+              echo "::warning::Plugin PR $spec is merged - skipping it; install the release from the App Store and remove it from PLUGIN_PRS."
+              continue
+            fi
+            composite="$composite plugin:$spec:$pl_sha"
+            plugin_prs="$plugin_prs $repo@$pl_sha"
+            plugin_prs_desc="$plugin_prs_desc $spec:${pl_sha:0:7}"
+          done
+          echo "plugin_prs=${plugin_prs# }" >> "$GITHUB_OUTPUT"
+          echo "plugin_prs_desc=${plugin_prs_desc# }" >> "$GITHUB_OUTPUT"
           if [ -n "${{ env.CANBOAT_WASM_RANGE }}" ]; then
             # Resolve the range to the highest published match. npm view
             # prints one version for a single match and a JSON array for
@@ -272,6 +323,59 @@ jobs:
           mv ./*.tgz ../signalk-src/extra-packages/
           ls -la ../signalk-src/extra-packages/
 
+      - name: Pack combined Freeboard-SK into extra-packages
+        if: steps.gate.outputs.changed == 'true' && steps.shas.outputs.freeboard_sha != ''
+        run: |
+          set -euo pipefail
+          # npm pack runs Freeboard's prepack (build:all), so the tarball
+          # ships the built webapp and helper plugin. Fetch the resolved SHA,
+          # not the branch name - same staleness rule as n2k-signalk.
+          rm -rf freeboard-src
+          git init -q freeboard-src
+          cd freeboard-src
+          git fetch -q --depth=1 "https://github.com/${{ env.FREEBOARD_REPO }}.git" "${{ steps.shas.outputs.freeboard_sha }}"
+          git checkout -q FETCH_HEAD
+          npm install
+          npm pack
+          mkdir -p ../signalk-src/extra-packages
+          mv ./*.tgz ../signalk-src/extra-packages/
+          ls -la ../signalk-src/extra-packages/
+
+      - name: Pack plugin PRs into extra-packages
+        if: steps.gate.outputs.changed == 'true'
+        id: plugins
+        run: |
+          set -euo pipefail
+          # These plugins build in prepublishOnly, which npm pack does not
+          # run, so build explicitly before packing.
+          names=""
+          for entry in ${{ steps.shas.outputs.plugin_prs }}; do
+            repo=${entry%@*}; sha=${entry#*@}
+            dir="plugin-src-$(basename "$repo")"
+            rm -rf "$dir"
+            git init -q "$dir"
+            (
+              cd "$dir"
+              git fetch -q --depth=1 "https://github.com/$repo.git" "$sha"
+              git checkout -q FETCH_HEAD
+              npm install
+              npm run build --if-present
+              npm pack
+              mkdir -p ../signalk-src/extra-packages
+              mv ./*.tgz ../signalk-src/extra-packages/
+            )
+            names="$names $(jq -r .name "$dir/package.json")"
+          done
+          names=${names# }
+          echo "bundle_plugins=$names" >> "$GITHUB_OUTPUT"
+          disabled=$names
+          if [ -n "${{ steps.shas.outputs.freeboard_sha }}" ]; then
+            disabled="$disabled @signalk/freeboard-sk"
+          fi
+          disabled=$(echo $disabled | tr ' ' ',')
+          echo "plugins_with_update_disabled=$disabled" >> "$GITHUB_OUTPUT"
+          ls -la signalk-src/extra-packages/ 2>/dev/null || true
+
       - name: Upload prepared source as artifact
         if: steps.gate.outputs.changed == 'true'
         uses: actions/upload-artifact@v7
@@ -319,6 +423,8 @@ jobs:
           canboat_repo: ${{ env.CANBOAT_REPO }}
           canboat_ref: ${{ needs.prepare.outputs.canboat_sha || env.CANBOAT_REF }}
           canboat_wasm_version: ${{ needs.prepare.outputs.wasm_version }}
+          bundle_plugins: ${{ needs.prepare.outputs.bundle_plugins }}
+          plugins_with_update_disabled: ${{ needs.prepare.outputs.plugins_with_update_disabled }}
           extra_labels: |
             io.dirkwa.signalk.prs=${{ needs.prepare.outputs.prs }}
             io.dirkwa.signalk.branches=${{ needs.prepare.outputs.branches }}
@@ -326,6 +432,8 @@ jobs:
             io.dirkwa.canboat.version=${{ needs.prepare.outputs.canboat_desc }}
             io.dirkwa.n2k-signalk.version=${{ needs.prepare.outputs.n2k_desc }}
             io.dirkwa.canboat-wasm.version=${{ needs.prepare.outputs.wasm_desc }}
+            io.dirkwa.freeboard.version=${{ needs.prepare.outputs.freeboard_desc }}
+            io.dirkwa.plugin-prs=${{ needs.prepare.outputs.plugin_prs_desc }}
 
       - name: Stash digest for the merge job
         run: |
