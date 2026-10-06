@@ -87,6 +87,11 @@ env:
 jobs:
   prepare:
     runs-on: ubuntu-latest
+    # Read-only: this job runs npm install and build scripts from unreleased
+    # branches (n2k-signalk, Freeboard, plugin PRs), so it must not hold a
+    # token that can push to this repo or publish images.
+    permissions:
+      contents: read
     outputs:
       composite: ${{ steps.shas.outputs.composite }}
       master_sha: ${{ steps.shas.outputs.master_sha }}
@@ -107,6 +112,8 @@ jobs:
       version: ${{ steps.stack.outputs.version }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Resolve upstream master + PR SHAs
         id: shas
