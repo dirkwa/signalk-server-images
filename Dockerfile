@@ -357,7 +357,7 @@ RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,sharing=locked \
       rm -rf "node_modules/$scope"; \
     fi; \
   done; \
-  # Same move for unscoped BUNDLED PLUGINS staged via extra-packages. npm \
+  # Same move for BUNDLED PLUGINS (scoped or not) staged via extra-packages. npm \
   # installs them into /home/node/signalk/node_modules/, which the server \
   # never scans: getModulePaths() looks only in configPath/node_modules \
   # (~/.signalk) and appPath/node_modules, and appPath is the signalk-server \
@@ -366,8 +366,9 @@ RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,sharing=locked \
   # silently never sees them. \
   for p in $BUNDLE_PLUGINS; do \
     if [ -d "node_modules/$p" ]; then \
-      mkdir -p node_modules/signalk-server/node_modules/; \
-      cp -rf "node_modules/$p" node_modules/signalk-server/node_modules/; \
+      dest="node_modules/signalk-server/node_modules/$p"; \
+      mkdir -p "$(dirname "$dest")"; \
+      cp -rf "node_modules/$p" "$(dirname "$dest")/"; \
       rm -rf "node_modules/$p"; \
     fi; \
     # Unconditional: the plugin was asked for, so a missing tarball (a pack \
