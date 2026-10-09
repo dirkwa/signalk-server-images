@@ -22,7 +22,7 @@ concurrency:
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/signalk-server
   UPSTREAM: SignalK/signalk-server
-  PRS: "2524 2895 2842 2844 2908 2909 2910 2911 3041 3124 3120 3121"
+  PRS: "2524 2895 2842 2844 2908 2909 2910 2911 3041 3124 3120"
   # Branches merged into the stack AFTER the PRs, for changes that have no
   # upstream PR (yet). Space-separated "owner/repo:branch" specs. Each
   # branch's head SHA feeds the composite state key, so pushing to the
@@ -67,21 +67,22 @@ env:
   N2K_SIGNALK_REPO: "dirkwa/n2k-signalk"
   N2K_SIGNALK_REF: "dirkwa-staging"
   # Freeboard-SK built from a branch that combines the open upstream
-  # Freeboard PRs (#904 radar CPA line, #914 sensor targets), installed in
+  # Freeboard PRs (#914 sensor targets, #912 trail detail, #941 + #943
+  # radar guard zones) and the radar range rings branch, installed in
   # place of the released Freeboard the server depends on. The tarball is
   # packed on the runner (prepack runs build:all) and staged as
   # extra-packages/, so npm resolves the server's @signalk/freeboard-sk
   # dependency to it. The branch head SHA feeds the composite key. Empty
   # FREEBOARD_REPO falls back to the released Freeboard.
   FREEBOARD_REPO: "dirkwa/freeboard-sk"
-  FREEBOARD_REF: "feat/collision-targets-combined"
+  FREEBOARD_REF: "feat/collision-test-freeboard"
   # Open plugin PRs bundled into the image, as space-separated
   # "owner/repo#number" specs. Each PR head is packed on the runner,
   # moved into the nested plugin tree (BUNDLE_PLUGINS) and has its App
   # Store update greyed out, so a published release cannot shadow the PR
   # build. A merged PR is skipped with a warning; install the released
   # plugin from the App Store then, and drop it from this list.
-  PLUGIN_PRS: "MarineYachtRadar/mayara-server-signalk-plugin#138 dirkwa/signalk-collision-alerts#11 dirkwa/signalk-target-fusion#1"
+  PLUGIN_PRS: ""
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
