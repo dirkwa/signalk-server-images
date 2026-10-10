@@ -22,16 +22,20 @@ concurrency:
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/signalk-server
   UPSTREAM: SignalK/signalk-server
-  PRS: "2524 2895 2842 2844 2908 2909 2910 2911 3041 3124 3120"
+  PRS: "2895 2842 2844 2908 2909 2910 2911 3124 3136 3122"
   # Branches merged into the stack AFTER the PRs, for changes that have no
-  # upstream PR (yet). Space-separated "owner/repo:branch" specs. Each
-  # branch's head SHA feeds the composite state key, so pushing to the
-  # branch — or adding/removing one here — triggers a rebuild.
+  # upstream PR (yet) or whose PR no longer merges onto master. Space-
+  # separated "owner/repo:branch" specs. Each branch's head SHA feeds the
+  # composite state key, so pushing to the branch — or adding/removing one
+  # here — triggers a rebuild.
+  # dirkwa-image-2524-3041 is master with #2524 and #3041 merged and their
+  # conflicts with master resolved; move both back to PRS once they are
+  # rebased upstream.
   # skip-webapp-swap carries upstream PR #2931 (KIP -> Skip webapp) plus a
   # pre-merge of #2588, whose optionalDependencies additions sit on the lines
   # #2931 removes. Merging the PR directly would conflict; this branch has the
   # resolution baked in, so it stacks cleanly here. Drop it once #2931 merges.
-  BRANCHES: "dirkwa/signalk-server:n2k-wasm-integration dirkwa/signalk-server:skip-webapp-swap"
+  BRANCHES: "dirkwa/signalk-server:dirkwa-image-2524-3041 dirkwa/signalk-server:n2k-wasm-integration dirkwa/signalk-server:skip-webapp-swap"
   # Build the Rust canboat binary from upstream master: every dirkwa
   # canboat PR (#799 #800 #801 #807) is merged there, but no release tag
   # ships the binary yet. The ref's head SHA feeds the composite key, so
@@ -66,9 +70,8 @@ env:
   # the override (do that when the PR is merged and released).
   N2K_SIGNALK_REPO: "dirkwa/n2k-signalk"
   N2K_SIGNALK_REF: "dirkwa-staging"
-  # Freeboard-SK built from a branch that combines the open upstream
-  # Freeboard PRs (#914 sensor targets, #912 trail detail, #941 + #943
-  # radar guard zones) and the radar range rings branch, installed in
+  # Freeboard-SK built from a branch of upstream master plus the open
+  # Freeboard PR #914 (sensor targets), installed in
   # place of the released Freeboard the server depends on. The tarball is
   # packed on the runner (prepack runs build:all) and staged as
   # extra-packages/, so npm resolves the server's @signalk/freeboard-sk
