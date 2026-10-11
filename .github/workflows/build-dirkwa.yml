@@ -22,7 +22,7 @@ concurrency:
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/signalk-server
   UPSTREAM: SignalK/signalk-server
-  PRS: "2895 2842 2844 2908 2909 2910 3124 3136 3122"
+  PRS: "2895 2842 2844 2908 2909 2910 3124 3136 3122 3142"
   # Branches merged into the stack AFTER the PRs, for changes that have no
   # upstream PR (yet) or whose PR no longer merges onto master. Space-
   # separated "owner/repo:branch" specs. Each branch's head SHA feeds the
@@ -71,7 +71,8 @@ env:
   N2K_SIGNALK_REPO: "dirkwa/n2k-signalk"
   N2K_SIGNALK_REF: "dirkwa-staging"
   # Freeboard-SK built from a branch of upstream master plus the open
-  # Freeboard PR #914 (sensor targets), installed in
+  # Freeboard PRs #914 (sensor targets) and #883 (instruments panel
+  # removal), installed in
   # place of the released Freeboard the server depends on. The tarball is
   # packed on the runner (prepack runs build:all) and staged as
   # extra-packages/, so npm resolves the server's @signalk/freeboard-sk
