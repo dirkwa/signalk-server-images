@@ -22,20 +22,18 @@ concurrency:
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/signalk-server
   UPSTREAM: SignalK/signalk-server
-  PRS: "2895 2842 2844 2908 2909 2910 3124 3136 3122 3142"
+  PRS: "2524 2895 2842 2844 2908 2909 2910 3041 3124 3136 3122 3142"
   # Branches merged into the stack AFTER the PRs, for changes that have no
-  # upstream PR (yet) or whose PR no longer merges onto master. Space-
-  # separated "owner/repo:branch" specs. Each branch's head SHA feeds the
-  # composite state key, so pushing to the branch — or adding/removing one
-  # here — triggers a rebuild.
-  # dirkwa-image-2524-3041 is master with #2524 and #3041 merged and their
-  # conflicts with master resolved; move both back to PRS once they are
-  # rebased upstream.
+  # upstream PR (yet), or for someone else's PR that needs a conflict
+  # resolution we can't push to its branch. Space-separated
+  # "owner/repo:branch" specs. Each branch's head SHA feeds the composite
+  # state key, so pushing to the branch — or adding/removing one here —
+  # triggers a rebuild.
   # skip-webapp-swap carries upstream PR #2931 (KIP -> Skip webapp) plus a
   # pre-merge of #2588, whose optionalDependencies additions sit on the lines
   # #2931 removes. Merging the PR directly would conflict; this branch has the
   # resolution baked in, so it stacks cleanly here. Drop it once #2931 merges.
-  BRANCHES: "dirkwa/signalk-server:dirkwa-image-2524-3041 dirkwa/signalk-server:n2k-wasm-integration dirkwa/signalk-server:skip-webapp-swap"
+  BRANCHES: "dirkwa/signalk-server:n2k-wasm-integration dirkwa/signalk-server:skip-webapp-swap"
   # Build the Rust canboat binary from upstream master: every dirkwa
   # canboat PR (#799 #800 #801 #807) is merged there, but no release tag
   # ships the binary yet. The ref's head SHA feeds the composite key, so
