@@ -24,9 +24,11 @@ env:
   UPSTREAM: SignalK/signalk-server
   PRS: "2524 2895 2842 2844 2908 2909 2910 3041 3124 3136 3122 3142"
   # Branches merged into the stack AFTER the PRs, for changes that have no
-  # upstream PR (yet). Space-separated "owner/repo:branch" specs. Each
-  # branch's head SHA feeds the composite state key, so pushing to the
-  # branch — or adding/removing one here — triggers a rebuild.
+  # upstream PR (yet), or for someone else's PR that needs a conflict
+  # resolution we can't push to its branch. Space-separated
+  # "owner/repo:branch" specs. Each branch's head SHA feeds the composite
+  # state key, so pushing to the branch — or adding/removing one here —
+  # triggers a rebuild.
   # skip-webapp-swap carries upstream PR #2931 (KIP -> Skip webapp) plus a
   # pre-merge of #2588, whose optionalDependencies additions sit on the lines
   # #2931 removes. Merging the PR directly would conflict; this branch has the
