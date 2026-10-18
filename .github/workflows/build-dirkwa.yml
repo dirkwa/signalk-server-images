@@ -33,7 +33,13 @@ env:
   # pre-merge of #2588, whose optionalDependencies additions sit on the lines
   # #2931 removes. Merging the PR directly would conflict; this branch has the
   # resolution baked in, so it stacks cleanly here. Drop it once #2931 merges.
-  BRANCHES: "dirkwa/signalk-server:n2k-wasm-integration dirkwa/signalk-server:skip-webapp-swap"
+  # wasm-connections-stack carries upstream PR #2912 (the canboat wasm
+  # connection types) with #2908 and #2909 merged in: #2912 conflicts with
+  # #2908 in packages/streams/package.json and with #2909 in the admin UI's
+  # BasicProvider.tsx, where each side adds its own dependency or connection
+  # options, and the branch keeps both. Re-merge it when #2912 moves, and put
+  # 2912 in PRS instead once it stacks cleanly.
+  BRANCHES: "dirkwa/signalk-server:wasm-connections-stack dirkwa/signalk-server:skip-webapp-swap"
   # Build the Rust canboat binary from upstream master: every dirkwa
   # canboat PR (#799 #800 #801 #807) is merged there, but no release tag
   # ships the binary yet. The ref's head SHA feeds the composite key, so
