@@ -100,14 +100,14 @@ RUN userdel -r ubuntu 2>/dev/null || true \
 # over a bind-mounted /run/avahi-daemon/socket (the installer Quadlet mounts it;
 # plain-Docker users add a volumes: line) and needs the mdns line in
 # /etc/nsswitch.conf below. No bluez — BLE plugins bind-mount host /run/dbus and
-# use host bluez.
+# use host bluez. tini is the container's PID 1 (see ENTRYPOINT).
 RUN apt-get update \
  && apt-get -y install --no-install-recommends \
       ca-certificates curl git sudo \
       python3 python3-venv python3-pip build-essential \
       libcap2-bin procps sysstat nano jq \
       uidmap fuse-overlayfs \
-      libnss-mdns \
+      libnss-mdns tini \
  && groupadd -r docker -g 991 \
  && groupadd -r i2c -g 990 \
  && groupadd -r spi -g 989 \
@@ -418,4 +418,11 @@ ENV PLUGINS_WITH_UPDATE_DISABLED=${PLUGINS_WITH_UPDATE_DISABLED}
 
 EXPOSE 3000
 
-ENTRYPOINT ["/home/node/signalk/startup.sh"]
+# tini as PID 1, as upstream's images do since SignalK/signalk-server#3162.
+# The kernel discards a signal that PID 1 has no handler for, so with the
+# server as PID 1 a SIGTERM that arrives before it installs its handler, early
+# in startup, is lost and the stop ends in the runtime's SIGKILL. tini
+# forwards signals to the server at any time and reaps orphaned processes,
+# which PID 1 must do. -s keeps it working when `docker run --init` already
+# provides a PID 1.
+ENTRYPOINT ["tini", "-s", "--", "/home/node/signalk/startup.sh"]
