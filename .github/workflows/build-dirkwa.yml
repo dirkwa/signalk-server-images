@@ -22,7 +22,7 @@ concurrency:
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/signalk-server
   UPSTREAM: SignalK/signalk-server
-  PRS: "2524 2895 2842 2844 2908 2909 2910 3041 3124 3136 3122 3164 3167 3194 3203"
+  PRS: "2524 2895 2842 2844 2908 2909 2910 3041 3124 3136 3122 3164 3167 3194"
   # Branches merged into the stack AFTER the PRs, for changes that have no
   # upstream PR (yet), or for someone else's PR that needs a conflict
   # resolution we can't push to its branch. Space-separated
@@ -37,10 +37,11 @@ env:
   # connection types) with #2908 and #2909 merged in: #2912 conflicts with
   # #2908 in packages/streams/package.json and with #2909 in the admin UI's
   # BasicProvider.tsx, where each side adds its own dependency or connection
-  # options, and the branch keeps both. It also merges #3203 (canboat 9,
-  # canboatjs 4, n2k-signalk 5), which conflicts with #2912 on the same
-  # streams dependencies; the branch takes canboatjs 4 and @canboat/wasm 9,
-  # the wasm build of canboat 9, so both decoders give the same SI values.
+  # options, and the branch keeps both. It also carries #3203 (canboat 9,
+  # canboatjs 4, n2k-signalk 5), which conflicts with #2908 and #2912 on the
+  # same streams dependencies, so it is not in PRS; the branch takes
+  # canboatjs 4 and @canboat/wasm 9, the wasm build of canboat 9, so both
+  # decoders give the same SI values. Re-merge it when #3203 moves.
   # Re-merge it when #2912 moves, and put 2912 in PRS instead once it
   # stacks cleanly.
   BRANCHES: "dirkwa/signalk-server:wasm-connections-stack dirkwa/signalk-server:skip-webapp-swap"
