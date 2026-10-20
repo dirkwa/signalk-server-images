@@ -357,6 +357,33 @@ RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,sharing=locked \
       rm -rf "node_modules/$scope"; \
     fi; \
   done; \
+  # Plugins and webapps the server itself depends on (signalk-to-nmea2000, \
+  # signalk-n2kais-to-nmea0183, ...) are hoisted to the parent node_modules \
+  # too, where the server never finds them (see the bundled-plugin note \
+  # below). Move every package that declares a plugin or webapp keyword into \
+  # the nested tree; its hoisted dependencies still resolve from the parent. \
+  # A package npm already placed in the nested tree keeps that copy. \
+  node -e ' \
+    const fs = require("fs"), path = require("path"); \
+    const top = "node_modules", nest = "node_modules/signalk-server/node_modules"; \
+    const kinds = new Set(["signalk-node-server-plugin", "signalk-webapp", "signalk-embeddable-webapp"]); \
+    const names = []; \
+    for (const e of fs.readdirSync(top)) { \
+      if (e.startsWith(".") || e === "signalk-server") continue; \
+      if (e.startsWith("@")) { for (const s of fs.readdirSync(path.join(top, e))) names.push(e + "/" + s); } \
+      else names.push(e); \
+    } \
+    for (const n of names) { \
+      let keywords; \
+      try { keywords = JSON.parse(fs.readFileSync(path.join(top, n, "package.json"), "utf8")).keywords; } catch { continue; } \
+      if (!Array.isArray(keywords) || !keywords.some((k) => kinds.has(k))) continue; \
+      const dest = path.join(nest, n); \
+      if (fs.existsSync(dest)) continue; \
+      fs.mkdirSync(path.dirname(dest), { recursive: true }); \
+      fs.renameSync(path.join(top, n), dest); \
+      console.log("moved plugin " + n + " into the nested plugin tree"); \
+    } \
+  '; \
   # Same move for BUNDLED PLUGINS (scoped or not) staged via extra-packages. npm \
   # installs them into /home/node/signalk/node_modules/, which the server \
   # never scans: getModulePaths() looks only in configPath/node_modules \
