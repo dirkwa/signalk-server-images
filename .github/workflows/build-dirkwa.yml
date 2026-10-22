@@ -258,6 +258,9 @@ jobs:
           cd signalk-src
           git config user.email "build@dirkwa.local"
           git config user.name  "dirkwa build"
+          # Each merge may start a detached auto-gc that is still writing
+          # packs when .git is removed below ("Directory not empty").
+          git config gc.auto 0
           git checkout master
 
           for pr in ${{ steps.shas.outputs.active_prs }}; do
