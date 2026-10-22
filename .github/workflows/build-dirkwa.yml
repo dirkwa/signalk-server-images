@@ -22,7 +22,7 @@ concurrency:
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/signalk-server
   UPSTREAM: SignalK/signalk-server
-  PRS: "2524 2842 2844 2908 2909 2910 3041 3124 3122 3164 3204 3163 3212 3222 3223 3171 3175 3211"
+  PRS: "2524 2842 2844 2908 2909 2910 3041 3124 3122 3164 3204 3163 3212"
   # Branches merged into the stack AFTER the PRs, for changes that have no
   # upstream PR (yet), or for someone else's PR that needs a conflict
   # resolution we can't push to its branch. Space-separated
@@ -47,8 +47,10 @@ env:
   # wasm-runtime-stack carries the open WASM runtime PRs #3169 #3170 #3173
   # #3174 #3176 #3177 #3182, which conflict with #3222 (and #3176 with
   # #3175), with the conflicts resolved on top of master + #3222 #3175
-  # #3171 #3211 #3223. Re-merge it when one of those PRs moves; drop it
-  # once they stack cleanly in PRS.
+  # #3171 #3211 #3223. Those five are not in PRS: they also conflict with
+  # each other as their heads move, and the branch carries the resolution.
+  # Re-merge it when one of these PRs moves; drop it once they stack
+  # cleanly in PRS.
   BRANCHES: "dirkwa/signalk-server:wasm-connections-stack dirkwa/signalk-server:skip-webapp-swap dirkwa/signalk-server:wasm-runtime-stack"
   # Build the Rust canboat binary from upstream master: every dirkwa
   # canboat PR (#799 #800 #801 #807) is merged there, but no release tag
