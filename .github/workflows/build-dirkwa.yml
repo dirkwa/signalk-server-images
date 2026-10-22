@@ -78,16 +78,17 @@ env:
   # (n2k-signalk 5 beta via #3203) carries everything dirkwa-staging had.
   N2K_SIGNALK_REPO: ""
   N2K_SIGNALK_REF: "dirkwa-staging"
-  # Freeboard-SK built from a branch of upstream master plus the open
-  # Freeboard PRs #914 (sensor targets) and #883 (instruments panel
-  # removal), installed in
-  # place of the released Freeboard the server depends on. The tarball is
-  # packed on the runner (prepack runs build:all) and staged as
-  # extra-packages/, so npm resolves the server's @signalk/freeboard-sk
-  # dependency to it. The branch head SHA feeds the composite key. Empty
-  # FREEBOARD_REPO falls back to the released Freeboard.
-  FREEBOARD_REPO: "dirkwa/freeboard-sk"
-  FREEBOARD_REF: "feat/collision-test-freeboard"
+  # Freeboard-SK built from upstream master plus every open PR (drafts
+  # included) by FREEBOARD_PR_AUTHOR, installed in place of the released
+  # Freeboard the server depends on. The PR list is resolved on each run,
+  # so a newly opened PR joins the image and a merged or closed one drops
+  # out without editing this file. The tarball is packed on the runner
+  # (prepack runs build:all) and staged as extra-packages/, so npm resolves
+  # the server's @signalk/freeboard-sk dependency to it. Master and every
+  # PR head SHA feed the composite key. Empty FREEBOARD_UPSTREAM falls back
+  # to the released Freeboard.
+  FREEBOARD_UPSTREAM: "SignalK/freeboard-sk"
+  FREEBOARD_PR_AUTHOR: "dirkwa"
   # Open plugin PRs bundled into the image, as space-separated
   # "owner/repo#number" specs. Each PR head is packed on the runner,
   # moved into the nested plugin tree (BUNDLE_PLUGINS) and has its App
@@ -113,7 +114,7 @@ jobs:
       canboat_desc: ${{ steps.shas.outputs.canboat_desc }}
       canboat_sha: ${{ steps.shas.outputs.canboat_sha }}
       n2k_desc: ${{ steps.shas.outputs.n2k_desc }}
-      freeboard_desc: ${{ steps.shas.outputs.freeboard_desc }}
+      freeboard_desc: ${{ steps.freeboard.outputs.freeboard_desc }}
       plugin_prs_desc: ${{ steps.shas.outputs.plugin_prs_desc }}
       bundle_plugins: ${{ steps.plugins.outputs.bundle_plugins }}
       plugins_with_update_disabled: ${{ steps.plugins.outputs.plugins_with_update_disabled }}
@@ -168,14 +169,20 @@ jobs:
             echo "n2k_desc=" >> "$GITHUB_OUTPUT"
             echo "n2k_sha=" >> "$GITHUB_OUTPUT"
           fi
-          if [ -n "${{ env.FREEBOARD_REPO }}" ]; then
-            fb_sha=$(gh api "repos/${{ env.FREEBOARD_REPO }}/commits/${{ env.FREEBOARD_REF }}" --jq .sha)
-            composite="$composite freeboard:${{ env.FREEBOARD_REPO }}:${{ env.FREEBOARD_REF }}:$fb_sha"
-            echo "freeboard_desc=git:${{ env.FREEBOARD_REPO }}@${fb_sha:0:7}" >> "$GITHUB_OUTPUT"
+          if [ -n "${{ env.FREEBOARD_UPSTREAM }}" ]; then
+            fb_sha=$(gh api "repos/${{ env.FREEBOARD_UPSTREAM }}/commits/master" --jq .sha)
+            composite="$composite freeboard:${{ env.FREEBOARD_UPSTREAM }}:master:$fb_sha"
+            fb_prs=$(gh api --paginate "repos/${{ env.FREEBOARD_UPSTREAM }}/pulls?state=open&per_page=100" \
+              --jq '.[] | select(.user.login == "${{ env.FREEBOARD_PR_AUTHOR }}") | "\(.number):\(.head.sha)"' \
+              | sort -n | tr '\n' ' ')
+            for entry in $fb_prs; do
+              composite="$composite freeboard-pr${entry%%:*}:${entry#*:}"
+            done
             echo "freeboard_sha=$fb_sha" >> "$GITHUB_OUTPUT"
+            echo "freeboard_prs=${fb_prs% }" >> "$GITHUB_OUTPUT"
           else
-            echo "freeboard_desc=" >> "$GITHUB_OUTPUT"
             echo "freeboard_sha=" >> "$GITHUB_OUTPUT"
+            echo "freeboard_prs=" >> "$GITHUB_OUTPUT"
           fi
           plugin_prs=""
           plugin_prs_desc=""
@@ -341,16 +348,36 @@ jobs:
 
       - name: Pack combined Freeboard-SK into extra-packages
         if: steps.gate.outputs.changed == 'true' && steps.shas.outputs.freeboard_sha != ''
+        id: freeboard
         run: |
           set -euo pipefail
           # npm pack runs Freeboard's prepack (build:all), so the tarball
-          # ships the built webapp and helper plugin. Fetch the resolved SHA,
-          # not the branch name - same staleness rule as n2k-signalk.
+          # ships the built webapp and helper plugin. Merge the resolved
+          # SHAs, not the branch names - same staleness rule as n2k-signalk.
           rm -rf freeboard-src
-          git init -q freeboard-src
+          git clone -q "https://github.com/${{ env.FREEBOARD_UPSTREAM }}.git" freeboard-src
           cd freeboard-src
-          git fetch -q --depth=1 "https://github.com/${{ env.FREEBOARD_REPO }}.git" "${{ steps.shas.outputs.freeboard_sha }}"
-          git checkout -q FETCH_HEAD
+          git config user.email "build@dirkwa.local"
+          git config user.name  "dirkwa build"
+          git config gc.auto 0
+          git checkout -q "${{ steps.shas.outputs.freeboard_sha }}"
+          fb_sha="${{ steps.shas.outputs.freeboard_sha }}"
+          desc="git:${{ env.FREEBOARD_UPSTREAM }}@${fb_sha:0:7}"
+          # The PR list is picked up automatically, so one PR that conflicts
+          # with master or with an earlier PR is left out with a warning
+          # rather than failing the whole image; the label records what
+          # was actually merged.
+          for entry in ${{ steps.shas.outputs.freeboard_prs }}; do
+            pr=${entry%%:*}; sha=${entry#*:}
+            if git fetch -q origin "$sha" && git merge --no-ff --no-edit -m "Merge ${{ env.FREEBOARD_UPSTREAM }}#$pr ($sha)" "$sha"; then
+              desc="$desc +$pr:${sha:0:7}"
+            else
+              echo "::warning::Freeboard PR #$pr conflicts with master or an earlier PR - left out of the image."
+              git merge --abort || true
+            fi
+          done
+          echo "freeboard_desc=$desc" >> "$GITHUB_OUTPUT"
+          echo "Freeboard: $desc"
           npm install
           npm pack
           mkdir -p ../signalk-src/extra-packages
