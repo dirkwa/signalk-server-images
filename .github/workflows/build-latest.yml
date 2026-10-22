@@ -28,7 +28,11 @@ jobs:
         id: ver
         run: |
           set -euo pipefail
-          LATEST=$(curl -fsSL https://registry.npmjs.org/-/package/signalk-server/dist-tags | jq -r .latest)
+          # The package document carries the dist-tags too; the separate
+          # /-/package/<name>/dist-tags endpoint has had outages of its own.
+          LATEST=$(curl -fsSL --retry 5 --retry-all-errors --retry-delay 15 \
+              -H 'Accept: application/vnd.npm.install-v1+json' \
+              https://registry.npmjs.org/signalk-server | jq -r '."dist-tags".latest')
           if [ -z "$LATEST" ] || [ "$LATEST" = "null" ]; then
             echo "Failed to resolve npm dist-tag 'latest'" >&2; exit 1
           fi
