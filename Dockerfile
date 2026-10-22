@@ -100,14 +100,17 @@ RUN userdel -r ubuntu 2>/dev/null || true \
 # over a bind-mounted /run/avahi-daemon/socket (the installer Quadlet mounts it;
 # plain-Docker users add a volumes: line) and needs the mdns line in
 # /etc/nsswitch.conf below. No bluez — BLE plugins bind-mount host /run/dbus and
-# use host bluez. tini is the container's PID 1 (see ENTRYPOINT).
+# use host bluez. libdbus-1-3 is the D-Bus client library that bluez would
+# otherwise pull in: native programs started by the server (BLE code built
+# on the Rust dbus crate) link against it. tini is the container's PID 1
+# (see ENTRYPOINT).
 RUN apt-get update \
  && apt-get -y install --no-install-recommends \
       ca-certificates curl git sudo \
       python3 python3-venv python3-pip build-essential \
       libcap2-bin procps sysstat nano jq \
       uidmap fuse-overlayfs \
-      libnss-mdns tini \
+      libnss-mdns libdbus-1-3 tini \
  && groupadd -r docker -g 991 \
  && groupadd -r i2c -g 990 \
  && groupadd -r spi -g 989 \
