@@ -44,7 +44,12 @@ env:
   # decoders give the same SI values. Re-merge it when #3203 moves.
   # Re-merge it when #2912 moves, and put 2912 in PRS instead once it
   # stacks cleanly.
-  BRANCHES: "dirkwa/signalk-server:wasm-connections-stack dirkwa/signalk-server:skip-webapp-swap"
+  # wasm-runtime-stack carries the open WASM runtime PRs #3169 #3170 #3173
+  # #3174 #3176 #3177 #3182, which conflict with #3222 (and #3176 with
+  # #3175), with the conflicts resolved on top of master + #3222 #3175
+  # #3171 #3211 #3223. Re-merge it when one of those PRs moves; drop it
+  # once they stack cleanly in PRS.
+  BRANCHES: "dirkwa/signalk-server:wasm-connections-stack dirkwa/signalk-server:skip-webapp-swap dirkwa/signalk-server:wasm-runtime-stack"
   # Build the Rust canboat binary from upstream master: every dirkwa
   # canboat PR (#799 #800 #801 #807) is merged there, but no release tag
   # ships the binary yet. The ref's head SHA feeds the composite key, so
