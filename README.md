@@ -32,6 +32,9 @@ truth, and each entry's resolved SHA is recorded in the image labels
 (`io.dirkwa.signalk.prs`, `io.dirkwa.signalk.branches`,
 `io.dirkwa.n2k-signalk.version`, `io.dirkwa.canboat-wasm.version`).
 
+`:dirkwa` runs on Node.js 26 (`NODE_MAJOR` in the same workflow); the other
+tags stay on Node.js 24.
+
 #### canboat N2K decoding
 
 N2K decoding uses [`@canboat/wasm`](https://www.npmjs.com/package/@canboat/wasm)

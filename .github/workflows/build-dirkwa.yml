@@ -63,6 +63,9 @@ env:
   # hasAnalyzer-gated native subtypes disappear from the UI; set "1"
   # (and restore the canboat composite entry) to bring them back.
   INSTALL_CANBOAT: "0"
+  # Node major for this variant only; :latest/:beta/:master stay on the
+  # Dockerfile default to mirror upstream.
+  NODE_MAJOR: "26"
   CANBOAT_SOURCE: "git"
   CANBOAT_REPO: "canboat/canboat"
   CANBOAT_REF: "master"
@@ -468,6 +471,7 @@ jobs:
           image: ${{ env.IMAGE }}
           upstream_sha: ${{ needs.prepare.outputs.combined_sha }}
           strip_packages: "@signalk/instrumentpanel"
+          node_major: ${{ env.NODE_MAJOR }}
           install_canboat: ${{ env.INSTALL_CANBOAT }}
           canboat_source: ${{ env.CANBOAT_SOURCE }}
           canboat_repo: ${{ env.CANBOAT_REPO }}
