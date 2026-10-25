@@ -46,6 +46,12 @@ inputs:
       Empty keeps the standard labels only.
     required: false
     default: ""
+  node_major:
+    description: >-
+      Node.js major version for the image (NODE_MAJOR build arg). Default
+      "24" keeps variants on the Dockerfile's default.
+    required: false
+    default: "24"
   install_canboat:
     description: >-
       "1" installs canboat's prebuilt C tools (INSTALL_CANBOAT build arg),
@@ -129,6 +135,7 @@ runs:
           SIGNALK_SOURCE=${{ inputs.source }}
           SIGNALK_VERSION=${{ inputs.version }}
           SIGNALK_GIT_REF=${{ inputs.git_ref }}
+          NODE_MAJOR=${{ inputs.node_major }}
           STRIP_PACKAGES=${{ inputs.strip_packages }}
           INSTALL_CANBOAT=${{ inputs.install_canboat }}
           CANBOAT_SOURCE=${{ inputs.canboat_source }}
