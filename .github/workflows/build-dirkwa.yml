@@ -99,6 +99,11 @@ env:
   # to the released Freeboard.
   FREEBOARD_UPSTREAM: "SignalK/freeboard-sk"
   FREEBOARD_PR_AUTHOR: "dirkwa"
+  # Freeboard files only the specs read; npm pack (build:all) never runs
+  # them. The saved-config fixture is a single ~100 KB JSON line, so any
+  # two PRs that touch it conflict. A PR whose conflicts all fall in these
+  # files keeps the copy merged so far and still joins the image.
+  FREEBOARD_TEST_ONLY_FILES: "src/app/app.config.saved.json"
   # Open plugin PRs bundled into the image, as space-separated
   # "owner/repo#number" specs. Each PR head is packed on the runner,
   # moved into the nested plugin tree (BUNDLE_PLUGINS) and has its App
@@ -376,10 +381,21 @@ jobs:
           # The PR list is picked up automatically, so one PR that conflicts
           # with master or with an earlier PR is left out with a warning
           # rather than failing the whole image; the label records what
-          # was actually merged.
+          # was actually merged. Conflicts confined to FREEBOARD_TEST_ONLY_FILES
+          # keep our side, since the build never reads those files.
           for entry in ${{ steps.shas.outputs.freeboard_prs }}; do
             pr=${entry%%:*}; sha=${entry#*:}
-            if git fetch -q origin "$sha" && git merge --no-ff --no-edit -m "Merge ${{ env.FREEBOARD_UPSTREAM }}#$pr ($sha)" "$sha"; then
+            msg="Merge ${{ env.FREEBOARD_UPSTREAM }}#$pr ($sha)"
+            if git fetch -q origin "$sha" && git merge --no-ff --no-edit -m "$msg" "$sha"; then
+              desc="$desc +$pr:${sha:0:7}"
+              continue
+            fi
+            mapfile -t conflicts < <(git diff --name-only --diff-filter=U)
+            outside=$(printf '%s\n' "${conflicts[@]}" | grep -vxF -f <(printf '%s\n' ${{ env.FREEBOARD_TEST_ONLY_FILES }}) || true)
+            if [ ${#conflicts[@]} -gt 0 ] && [ -z "$outside" ] \
+              && git checkout --ours -- "${conflicts[@]}" && git add -- "${conflicts[@]}" \
+              && git commit -q -m "$msg"; then
+              echo "::notice::Freeboard PR #$pr conflicts only in test-only files (${conflicts[*]}) - kept the version merged so far."
               desc="$desc +$pr:${sha:0:7}"
             else
               echo "::warning::Freeboard PR #$pr conflicts with master or an earlier PR - left out of the image."
