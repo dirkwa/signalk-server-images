@@ -331,8 +331,13 @@ RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000,sharing=locked \
       echo "Unknown SIGNALK_SOURCE: $SIGNALK_SOURCE" >&2; exit 1; \
       ;; \
   esac; \
-  test -f node_modules/@canboat/canboatjs/build/Release/canSocket.node || { \
-    echo "canboatjs native canSocket addon missing — npm skipped install scripts (allow-scripts gate)?" >&2; \
+  # canboatjs 4 ships canSocket.node prebuilt for linux x64/arm64/armv7 and \
+  # builds it only where none loads, so build/Release can be empty; then \
+  # the prebuilt that node-gyp-build picks for this machine must load. \
+  cb=node_modules/@canboat/canboatjs; \
+  test -f "$cb/build/Release/canSocket.node" \
+    || (cd "$cb" && node -e "require(require('node-gyp-build').resolve('.'))") || { \
+    echo "canboatjs native canSocket addon missing or not loadable — npm skipped install scripts (allow-scripts gate)?" >&2; \
     exit 1; \
   }; \
   # @canboat/wasm: the in-process canboat decoder behind the wasm \

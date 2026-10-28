@@ -79,7 +79,7 @@ env:
   # next scheduled run rebuilds -- exactly how PRS/BRANCHES track their
   # upstreams. Putting the range itself in the key would freeze it: the
   # string never changes, so a new release would never trigger a build.
-  CANBOAT_WASM_RANGE: "^9.0.0-beta.1"
+  CANBOAT_WASM_RANGE: "^9.1.0"
   # Unreleased @signalk/n2k-signalk to bake into the image. The tarball
   # is pre-built on the runner and staged as signalk-src/extra-packages/
   # for the Dockerfile — see the extra-packages note there for why not a
