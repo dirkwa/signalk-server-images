@@ -111,6 +111,12 @@ env:
   # build. A merged PR is skipped with a warning; install the released
   # plugin from the App Store then, and drop it from this list.
   PLUGIN_PRS: ""
+  # Plugin branches bundled the same way, as "owner/repo@ref" specs: a
+  # merged change that no release carries yet. The ref's head SHA feeds the
+  # composite key, so a push to the branch rebuilds. Drop an entry once a
+  # release carries the change. signalk-to-nmea2000 master is a server
+  # dependency, so its tarball also satisfies the server's own range.
+  PLUGIN_BRANCHES: "SignalK/signalk-to-nmea2000@master"
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
@@ -208,6 +214,13 @@ jobs:
               echo "::warning::Plugin PR $spec is merged - skipping it; install the release from the App Store and remove it from PLUGIN_PRS."
               continue
             fi
+            composite="$composite plugin:$spec:$pl_sha"
+            plugin_prs="$plugin_prs $repo@$pl_sha"
+            plugin_prs_desc="$plugin_prs_desc $spec:${pl_sha:0:7}"
+          done
+          for spec in ${{ env.PLUGIN_BRANCHES }}; do
+            repo=${spec%@*}; ref=${spec#*@}
+            pl_sha=$(gh api "repos/$repo/commits/$ref" --jq .sha)
             composite="$composite plugin:$spec:$pl_sha"
             plugin_prs="$plugin_prs $repo@$pl_sha"
             plugin_prs_desc="$plugin_prs_desc $spec:${pl_sha:0:7}"
@@ -410,7 +423,7 @@ jobs:
           mv ./*.tgz ../signalk-src/extra-packages/
           ls -la ../signalk-src/extra-packages/
 
-      - name: Pack plugin PRs into extra-packages
+      - name: Pack plugin PRs and branches into extra-packages
         if: steps.gate.outputs.changed == 'true'
         id: plugins
         run: |
