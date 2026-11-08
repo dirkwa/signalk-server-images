@@ -102,6 +102,9 @@ env:
   # to the released Freeboard.
   FREEBOARD_UPSTREAM: "SignalK/freeboard-sk"
   FREEBOARD_PR_AUTHOR: "dirkwa"
+  # When set, only these of FREEBOARD_PR_AUTHOR's open PRs join the image,
+  # so newly opened PRs stay out; a merged or closed one still drops out.
+  FREEBOARD_PRS: "883 914 1219 1224 1225 1227 1230 1231 1233 1237 1238"
   # Freeboard files only the specs read; npm pack (build:all) never runs
   # them. The saved-config fixture is a single ~100 KB JSON line, so any
   # two PRs that touch it conflict. A PR whose conflicts all fall in these
@@ -199,6 +202,15 @@ jobs:
             fb_prs=$(gh api --paginate "repos/${{ env.FREEBOARD_UPSTREAM }}/pulls?state=open&per_page=100" \
               --jq '.[] | select(.user.login == "${{ env.FREEBOARD_PR_AUTHOR }}") | "\(.number):\(.head.sha)"' \
               | sort -n | tr '\n' ' ')
+            if [ -n "${{ env.FREEBOARD_PRS }}" ]; then
+              allowed=""
+              for entry in $fb_prs; do
+                case " ${{ env.FREEBOARD_PRS }} " in
+                  *" ${entry%%:*} "*) allowed="$allowed$entry " ;;
+                esac
+              done
+              fb_prs=$allowed
+            fi
             for entry in $fb_prs; do
               composite="$composite freeboard-pr${entry%%:*}:${entry#*:}"
             done
