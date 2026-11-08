@@ -22,7 +22,7 @@ concurrency:
 env:
   IMAGE: ghcr.io/${{ github.repository_owner }}/signalk-server
   UPSTREAM: SignalK/signalk-server
-  PRS: "2524 2842 2844 2908 2909 2910 3041 3124 3122 3164 3204 3163 3212 3224 3233"
+  PRS: "2524 2842 2844 2908 2909 2910 3041 3124 3122 3164 3163 3212 3224 3233"
   # Branches merged into the stack AFTER the PRs, for changes that have no
   # upstream PR (yet), or for someone else's PR that needs a conflict
   # resolution we can't push to its branch. Space-separated
@@ -33,6 +33,9 @@ env:
   # pre-merge of #2588, whose optionalDependencies additions sit on the lines
   # #2931 removes. Merging the PR directly would conflict; this branch has the
   # resolution baked in, so it stacks cleanly here. Drop it once #2931 merges.
+  # It also carries #3204 (bundled packages found where npm hoists them),
+  # merged with master's admin-UI check in Dockerfile_rel, so 3204 is not in
+  # PRS. Re-merge it when #3204 moves.
   # wasm-connections-stack carries upstream PR #2912 (the canboat wasm
   # connection types) with #2908 and #2909 merged in: #2912 conflicts with
   # #2908 in packages/streams/package.json and with #2909 in the admin UI's
